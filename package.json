@@ -1,0 +1,23 @@
+{
+  "name": "cowork",
+  "version": "0.1.0",
+  "description": "多 Agent 协作系统：可配置 agent/模型，异步工作，版本化产物交接，架构一致性检查，冲突会议与协调汇报",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "cowork": "./bin/cowork.js"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "demo": "node bin/cowork.js run examples/demo"
+  },
+  "keywords": [
+    "multi-agent",
+    "collaboration",
+    "workflow",
+    "orchestration"
+  ],
+  "license": "MIT"
+}
