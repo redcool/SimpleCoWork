@@ -73,6 +73,11 @@
 | 本会话 | P5 | CLI + examples/demo 实跑（completed 4/4） | ✅ |
 | 本会话 | P6 | 集成测试：全流程 + 持久化回放 | ✅ |
 | 本会话 | P7 | 全量测试 50/50、语法检查 28 文件、REVIEW.md | ✅ |
+| 本会话 | P8 | agnes 真实模型接入说明与 demo 示例（openai 协议） | ✅ |
+| 本会话 | P9 | 夜班静默模式：时间判定 + 多角色会议 + night-shift 文档 + --night | ✅ |
+| 本会话 | P10 | Web 面板（serve）+ 人工审批 + run --resume 恢复续跑 | ✅ |
+| 本会话 | P11 | 规划器：cowork plan 主题→模块 DAG；run --plan 执行 | ✅ |
+| 本会话 | P12 | 全量测试 71/71、语法检查全文件、REVIEW.md 增补 + 4 条 CLI 端到端实测 | ✅ |
 
 ## 五、最终验收标准（总）
 
@@ -82,28 +87,29 @@
 4. 冲突时开会、讨论、分工解决 ✅ 由 meeting 触发器 + 决策 actions 提供，P4/P6 验证
 5. 全程离线可跑、可测试 ✅ 由 mock provider + node:test 提供，P7 验证（50/50 ✅）
 
-## 六、二阶段计划（P8-P12：agns 模型 / 夜班静默 / Web UI / 规划器）
+## 六、二阶段计划（P8–P12：agnes 模型 / 夜班静默 / Web UI / 规划器）
 
 > 目标升级：CoWork 从"流水线执行器"升级为**可被各类 agent coder（如 dsh）嵌入的规划型协作引擎**——
 > 用户给一个主题 → agents 分析拆解成模块计划 → 开发/测试/验证 → 交付验收。
 > 语言决策：**ESM JavaScript 零依赖运行**（理由见 README「技术决策」），文档型护 JSDoc + 可选 tsc --noEmit。
 
-### P8 agens 模型接入 ⬜
-- 交付：agens 接入说明与示例（`providers.agnes = {kind:'openai', baseURL:'https://apihub.agnes-ai.com/v1', apiKey: env.AGNES_API_KEY, defaultModel:'agnes-2.5-flash'}`）、demo 切换示例、README/REVIEW 更新
-- 验收：配置可通过校验；单测验证 provider 构造；文档给出 agnes-2.5-flash（免费）与 agnes-3.0-flash 用法
+### P8 agnes 模型接入 ✅
+- 交付：agnes 接入说明与示例（`providers.agnes = {kind:'openai', baseURL:'https://apihub.agnes-ai.com/v1', apiKey: env.AGNES_API_KEY, defaultModel:'agnes-2.5-flash'}`）、demo 切换注释示例（含 agnes-2.5-flash 免费 / agnes-3.0-flash / 2.5-pro 系列）、README/REVIEW 更新 ✅
+- 验收：openai provider 已单测；demo 配置注释给出各模型用法与密钥约定 ✅
 
-### P9 夜班静默模式 ⬜
-- 交付：`src/nightshift.js`（时间段判定[跨天/时区]、夜班日志渲染）、引擎多角色会议（架构/开发/审核/协调各发言→归纳决策）、`night-shift/YYYY-MM-DD.md`（问题/分析过程/决定）、时钟注入、CLI `run --night`
-- 验收：单测（边界/跨天/时区）+ 集成（夜班遇问题自动开会不阻塞、文档生成、白天仍阻塞人工）全绿
+### P9 夜班静默模式 ✅
+- 交付：`src/nightshift.js`（时间段判定[跨天/时区/时钟注入]、NightShiftLog 渲染落盘）、引擎夜班分派（架构/开发/审核/协调多角色发言→主持人归纳决策）、`night-shift/YYYY-MM-DD.md`（问题/分析过程/决定）、CLI `run --night`（强制）✅
+- 验收：nightshift.test 10 例（边界/跨天/时区/集成：夜班自动开会不阻塞+文档生成；白天仍阻塞人工）全绿；demo --night 文档实测 ✅
+- 防判停修复：runUntil 跟踪进行中会议决策（#inflight），避免微任务竞态提前判停 ✅
 
-### P10 Web UI（零依赖）⬜
-- 交付：`cowork serve <dir>` → node:http 面板：总览/任务/产物/会议/报告/夜班记录 + 人工审批入口（escalated 会议审批并写回决策）
-- 验收：页面可浏览全部状态；审批后状态更新并可重新 run 推进
+### P10 Web UI（零依赖）✅
+- 交付：`cowork serve <dir> [--port=N]` → node:http 面板（总览/任务/产物/审核/会议/夜班记录）+ 人工审批 `POST /api/decisions`（写回决策、任务置 needs_revision）+ `run --resume` 恢复续跑（engine.resumeState）✅
+- 验收：web.test 5 例（页面/状态/夜班列表/审批接口/续跑闭环）+ CLI 冒烟实测 ✅
 
-### P11 规划器（主题→模块→计划→执行→交付）⬜
-- 交付：`cowork plan <dir> "主题"`：agents(架构/规划) 拆解模块 → 生成任务 DAG（依赖/角色/验收/规则）→ 追加工作流 → 执行/质量门/测试 → 交付验收报告
-- 验收：集成测试：给主题→自动产出计划并跑通→报告含"可交付性"结论
+### P11 规划器（主题→模块→计划→执行→交付）✅
+- 交付：`cowork plan <dir> "主题"`：planner（回退 architect）拆解模块 DAG（依赖/角色/验收/规则）→ `plan/<主题>/plan.json` + `plan.md`；`run --plan=<file>` 执行；`workflow.rules` 注入 Oracle；planner 角色合法化 ✅
+- 验收：planner.test 6 例（规范化/角色映射/环检测/执行）+ demo plan→run 实测（2 模块 completed）✅
 
-### P12 整体测试与审核（二阶段）⬜
-- 交付：全量 `node --test` 通过、REVIEW.md 增补、CLI 端到端实跑（含 --night、serve、plan）
-- 验收：新增全部测试绿；人工验收清单更新
+### P12 整体测试与审核（二阶段）✅
+- 交付：全量 `node --test "test/*.test.js"` **71/71 通过**、`node --check` 全文件零错误、REVIEW.md 增补（9 项需求覆盖矩阵、4 条 CLI 端到端实测）、CLI 实跑（run / --night / --plan / serve+resume）✅
+- 验收：全部测试绿；人工验收清单已更新 ✅

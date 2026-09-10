@@ -1,82 +1,105 @@
 # CoWork 整体测试与审核报告（REVIEW）
 
-> 审核日期：本开发会话完成时
+> 审核日期：本开发会话完成时（含第二阶段 P8–P12）
 > 审核对象：`H:\ai_works\CoWorkPrj` 全部源码、测试、示例与文档
-> 审核方式：全量自动化测试 + 语法检查 + CLI 端到端实跑 + 需求覆盖对照 + 人工验收清单
+> 审核方式：全量自动化测试 + 语法检查 + CLI 端到端实跑（run/--night/serve/plan/--resume）+ 需求覆盖对照 + 人工验收清单
 
 ## 一、总体结论
 
-**通过。** MVP 全部 8 个阶段（P0–P7）完成：50/50 自动化测试通过，28 个 JS 文件语法检查通过，
-`examples/demo` 与 `init` 模板项目均可通过 CLI 一键端到端跑通，
-示例完整演示了"质量门失败 → 会议自动决策 → 补救重试 → 通过"的闭环。
+**通过。** 两个阶段全部完成：
+
+- 第一阶段 MVP（P0–P7）：50/50 测试通过，28 个 JS 文件语法检查通过。
+- 第二阶段（P8–P12）：nightshift / web / planner / resume 等新增模块测试全绿，最终 **71/71 测试通过**；
+  `examples/demo` 实测跑通 4 条 CLI 链路：`run`（质量门→会议→补救→完成）、`run --night`（自动开会 + 夜班文档）、
+  `plan + run --plan`（主题→模块 DAG→开发→验收→完成）、`serve`（面板 API）+ 人工审批 + `run --resume`（续跑闭环）。
 
 ## 二、需求覆盖矩阵（对照用户原始需求）
 
 | 序号 | 用户需求 | 实现方式 | 验证 |
 |---|---|---|---|
-| 1 | 用户可对 agent 进行数量和模型配置 | `config.agents[]`：每个 agent 独立配置 `id/role/title/provider/model/prompt/enabled`；支持 mock 与 OpenAI 兼容协议 | config.test / demo 四角色各自模型 |
-| 2 | agents 之间异步、工作过程不干扰，以对方成果为参考 | 依赖 DAG + 每轮并发批处理（`maxConcurrent`）；agent 只读 `inputs` 指向的**已批准产物**（`latestApproved`），从不直接依赖对方进行中状态；版本化产物交接 | workflow.test A（并发=2 不超限）、demo 双开发并行 |
-| 3 | agent1 可查看其他 agent 成果与预期（架构）是否一致 | Oracle 一致性检查：架构产物内 `rules.json` 形式化约束（含校验和/文件存在/包含/正则/JS 语法/按产物裁剪 ifPresent），对每个提交的代码产物自动求值，产出可审计检查记录 | oracle.test、demo（R1 违规被当场拦截） |
-| 4 | 有问题 agents 一起开会、讨论、再分工解决 | 会议触发器：审查失败次数 ≥ `maxReviewAttempts` 即触发；`autoDecide=true` 时由 manager 生成**决策 + 分工 actions**（写回任务补救指令）；否则升级人工（任务进入 waiting/failed + `blocked_human` 事件，summar blocked） | workflow.test C/D/F、meeting 记录含决策与 actions |
-| 5 | 协调者跟进进度并生成汇报 | reporter：进度百分比、任务表、产物表、审核记录、会议记录、风险（仅未解决的审查失败）、下一步 + manager 叙事（Markdown+JSON 双格式，落盘 `.cowork/`） | reporter.test、demo 汇报 |
+| 1 | 用户可对 agent 进行数量和模型配置 | `config.agents[]`：每个 agent 独立配置 `id/role/title/provider/model/prompt/enabled`；支持 mock 与 OpenAI 兼容协议（含 Agnes） | config.test / demo 五角色（含 planner）各自模型 |
+| 2 | agents 之间异步、工作过程不干扰，以对方成果为参考 | 依赖 DAG + 每轮并发批处理（`maxConcurrent`）；agent 只读 `inputs` 指向的**已批准产物**（`latestApproved`）；版本化产物交接 | workflow.test A（并发=2 不超限）、demo 双开发并行、plan 执行 m-core→m-ui |
+| 3 | agent1 可查看其他 agent 成果与预期（架构）是否一致 | Oracle 一致性检查：架构产物内 `rules.json` + `workflow.rules` 形式化约束（校验和/文件存在/包含/正则/JS 语法/ifPresent 裁剪），对每个提交的代码产物自动求值 | oracle.test、demo（R1 违规被当场拦截）、plan G1 规则 |
+| 4 | 有问题 agents 一起开会、讨论、再分工解决 | 会议触发器：审查失败次数 ≥ `maxReviewAttempts` 触发；**白天** autoDecide=manager 决策+分工 actions 或升级人工；**夜班** 多角色（架构师/生产者/审核者/协调者）各自分析→主持人归纳决策→写 `night-shift/YYYY-MM-DD.md`（问题/分析过程/决定）→分工修复 | workflow.test C/D/F、nightshift.test、demo --night 文档实测 |
+| 5 | 协调者跟进进度并生成汇报 | reporter：进度、任务、产物、审核、会议、风险（仅未解决审查失败）、下一步 + manager 叙事（Markdown+JSON 落盘 `.cowork/`） | reporter.test、demo 汇报 |
+| 6 | 模型可用 dsh 的 agnes flash 2.5 与 agnes 3.0 | openai 兼容 provider 直达 `apihub.agnes-ai.com/v1`，demo 配置注释给出 `agnes-2.5-flash`（免费）/`agnes-2.5-pro*`/`agnes-3.0-flash` 与 `AGNES_API_KEY` 用法 | 文档+示例（联网实测留给用户环境） |
+| 7 | 可加 Web UI | `cowork serve`（零依赖 node:http）：进度/任务/产物/审核/会议/夜班文档 + 人工审批接口（写回决策） | web.test（页面/API/审批/夜班列表）、CLI 冒烟 |
+| 8 | 夜班静默工作 | `engine.nightShift{enabled,timezone,ranges}`：时段内问题不阻塞，自动开会并生成夜班文档；`--night` 强制；时钟可注入 | nightshift.test（边界/跨天/时区/集成 10 例）、demo --night 文档实测 |
+| 9 | 可复用于各类 agent coder（如 dsh）：给主题即开工 | `cowork plan <dir> "主题"`：planner agent 拆解模块 DAG → `plan.json`/`plan.md` → `run --plan` 执行（模块/角色/依赖/验收/规则全自动） | planner.test（6 例）、demo plan→run 实测 |
 
 ## 三、模块清单与测试覆盖
 
 | 模块 | 文件 | 职责 | 覆盖测试 |
 |---|---|---|---|
 | 事件总线 | src/events.js | on/off/onAny/emit | 各域测试间接覆盖 |
-| 配置 | src/config.js | 规范、校验、DAG 环检测、loadConfig | config.test（10 例） |
+| 配置 | src/config.js | 规范、校验、DAG 环检测、nightShift 校验、workflow.rules、loadConfig | config.test（10 例） |
 | 持久化 | src/store.js | JSONL 事件 + 快照 | integration 回放 |
-| 域：Agent | src/domain/agents.js | 注册表 + 生命周期 | 引擎/集成间接覆盖 |
-| 域：Task | src/domain/tasks.js | 状态机 pending→…→approved/failed | tasks.test（8 例） |
-| 域：Artifact | src/domain/artifacts.js | 版本化/超期/校验和/状态 | artifacts.test（7 例） |
-| 域：Review | src/domain/reviews.js | 审核记录 | reporter/workflow 间接覆盖 |
+| 域：Agent/Task/Artifact/Review | src/domain/* | 状态机（含 waiting） | tasks/artifacts 等 |
 | Oracle | src/oracle.js | 规则引擎 + 结论分层 + JS 语法 | oracle.test（8 例） |
-| Runner | src/runner.js | 提示词/解析/动作落盘 | runner.test（4 例） |
-| exec | src/exec.js | 子进程 stdio inherit | runner.test（2 例含超时） |
-| Providers | src/providers/* | mock 确定性脚本 / openai 兼容 | runner.test（2 例） |
-| 引擎 | src/engine.js | 调度/质量门/重试/会议升级 | workflow.test（7 例） |
+| Runner | src/runner.js | 提示词/解析（keepRaw）/动作落盘 | runner.test + planner 间接 |
+| exec | src/exec.js | 子进程 stdio inherit | runner.test（含超时） |
+| Providers | src/providers/* | mock 脚本 / openai 兼容（Agnes 可用） | runner.test |
+| 引擎 | src/engine.js | 调度/质量门/重试/会议升级/夜班分派/resumeState | workflow.test（7 例）+ nightshift/web 集成 |
 | 会议 | src/meeting.js | 触发器/决策/升级 | workflow.test C/D/F |
+| 夜班 | src/nightshift.js | 跨天/时区判定、NightShiftLog 渲染落盘 | nightshift.test（10 例） |
+| 规划器 | src/planner.js | 主题→模块 DAG、规范化（角色/依赖/验收）、计划文档 | planner.test（6 例） |
+| Web 面板 | src/web/* | node:http 面板 + 状态视图 + 审批 API + 夜班 API | web.test（5 例） |
 | 汇报 | src/reporter.js | 快照/叙事/Markdown | reporter.test（4 例） |
-| CLI | bin/cowork.js | init/run/status/report/artifacts | 实跑（demo + init 冒烟） |
-| 集成 | test/integration.test.js | 全流程 + 持久化回放 | 2 例 |
+| CLI | bin/cowork.js | init/plan/run(--night/--resume/--plan)/serve/status/report/artifacts | 实跑 4 条链路 |
+| 集成 | test/*.test.js | 全流程 + 持久化回放 + 闭环 | 71 例全部通过 |
 
-共 **50 个测试，全部通过**；`node --check` 28 个 JS 文件零语法错误。
+共 **71 个测试，全部通过**；`node --check` 全部 JS 文件零语法错误。
 
 ## 四、端到端实测记录（examples/demo）
 
-1. t-arch 架构设计 → 产出 `architecture.md` + `rules.json`（4 条可机检规则），approved ✔
-2. t-dev-api 与 t-dev-db **并行**（maxConcurrent=2）✔
-3. t-dev-api v1 违反 R1（缺 module.exports）/R2（TODO）→ 质量门拦截，产物 rejected，审查记录 fail ✔
-4. 失败次数达 `maxReviewAttempts=1` → 触发会议 m-1（autoDecide）→ manager 决策含补救 action ✔
-5. t-dev-api v2 按决策修复 → Oracle + 审核通过 → approved；t-dev-db 一次通过 ✔
-6. t-report 汇总 → report-v1（Markdown 报告：进度 100%、4/4、无未解决风险）✔
-7. 持久化：`state.json` / `events.jsonl` / `report.md` / `report.json` / 各尝试的工作区文件齐全，status/artifacts 从快照正确恢复 ✔
+### 4.1 白天 run（MVP 闭环）
+1. t-arch 架构设计 → `architecture.md` + `rules.json`（4 条规则），approved ✔
+2. t-dev-api 与 t-dev-db 并行（maxConcurrent=2）✔
+3. t-dev-api v1 违反 R1/R2 → 质量门拦截，产物 rejected，审查 fail ✔
+4. 触发会议 m-1（autoDecide）→ manager 决策含补救 action ✔
+5. v2 修复 → 通过 → approved；t-dev-db 一次通过 ✔
+6. t-report 汇总 → report-v1（100%，4/4）✔
+
+### 4.2 夜班 run --night
+- 强制夜班下，t-dev-api 质量问题**不阻塞人工**：架构师/审核者/协调者/开发者 4 角色发言 → manager 归纳决策 + 分工 ✔
+- 生成 `night-shift/2026-09-10.md`：**问题**（src/api.js 缺少 module.exports）/ **分析过程**（四角色意见）/ **决定**（决策+分工）✔
+
+### 4.3 主题规划 plan + run --plan
+- `cowork plan examples/demo "做一个天气查询"` → planner agent 输出模块 DAG（m-core/m-ui、验收 C1/C2/U1、规则 G1）→ `plan/做一个天气查询/{plan.json,plan.md}` ✔
+- `run --plan=...` → 2 模块依赖调度 → 开发 → 质量门（G1+C1/C2、U1）→ 审核 → approved → completed ✔
+
+### 4.4 Web 面板 + 人工审批 + resume
+- `serve` 启动，`GET /`、`/api/state`（blocked 状态）、`/api/night`（夜班日列表与 markdown）✔
+- escalated 会议 → 面板审批（决策/理由/分工写回 state.json，任务置 needs_revision）→ `run --resume` 续跑 → completed ✔
 
 ## 五、已知限制（后续工作）
 
-1. **真实模型未实测**：openai provider 已实现并单测（请求构造/超时错误），但未连接真实模型跑通整条流水线；接入只需配置 `providers: { local: {kind:'openai', baseURL, apiKey, defaultModel} }` 并把 agents 的 `provider/model` 指向它。
-2. **会议人工审批 UI**：`autoDecide=false` 时任务进入 blocked（waiting/failed + 事件），无 Web 审批入口；CLI 提示"重新运行推进"，但未实现"编辑决策后续跑"的续跑，需人工改状态或重跑。
-3. **执行测试命令的证据**：exec 动作支持（stdio inherit + 退出码），demo 未使用；真实项目建议接入 lint/单测/构建命令并把 outFile 留档。
-4. **Token/成本统计、Git 分支隔离、Web 面板**为路线图后续项。
-5. **运行中断恢复**：`run` 始终全新执行，不续跑历史运行中的任务（状态可读但不可续跑）。
-6. **JS 语法校验**用 `vm.Script`（CommonJS 风格），ESM `import` 语法的目标代码不支持，规则类型可扩展。
+1. **真实模型未联网实测**：openai provider 已实现并单测；Agnes 接入按 README/demo 注释配置即可（`AGNES_API_KEY`），建议在用户环境实测一遍（P13 候选）。
+2. **断点续跑粒度**：`--resume` 支持"人工审批后续跑"与中断清理（running→重入队、waiting→按会议分流），但任务一旦提交即视为该次运行的产物，不跨运行合并。
+3. **执行测试命令的证据**：exec 动作支持（stdio inherit + 退出码），demo 演示尚未接入 lint/单测命令；真实项目建议配置 exec 动作留档（outFile）。
+4. **Token/成本统计、Git 分支隔离、多项目并发、agent 动态增删**为路线图后续项。
+5. **JS 语法校验**用 `vm.Script`（CommonJS 风格），ESM `import` 语法目标代码不支持（规则类型可扩展）。
+6. **面板只读单一审批接口**：无跨站鉴权（默认绑定 127.0.0.1），面向本机使用。
 
 ## 六、人工验收清单（请用户核对）
 
-- [ ] `node --test "test/*.test.js"` 输出 50/50 通过
+- [ ] `node --test "test/*.test.js"` 输出 71/71 通过
 - [ ] `node bin/cowork.js run examples/demo` 最终状态 completed（100%，4/4）
-- [ ] `node bin/cowork.js status examples/demo` / `report` / `artifacts` 输出与实跑一致
-- [ ] 编辑 `examples/demo/cowork.config.js` 中 agents 的 provider/model 可切换真实模型
-- [ ] 新增/删除 agent 与 workflow 任务后 `run` 仍可校验（config.test 覆盖错误提示）
-- [ ] 同意当前设计（Task/Artifact/Review/Meeting/Report 状态机 + 质量门 + 会议升级）作为 MVP 基线
+- [ ] `node bin/cowork.js run examples/demo --night` 后查看 `examples/demo/night-shift/*.md`（问题/分析过程/决定 三段格式）
+- [ ] `node bin/cowork.js plan examples/demo "你的主题"` → `run --plan=plan/<主题>/plan.json` 一键开工并 completed
+- [ ] `node bin/cowork.js serve examples/demo` → 浏览器 http://127.0.0.1:8765 查看面板与夜班记录
+- [ ] 按 README「接入真实模型」配置 Agnes/OpenAI provider 并切换 agents 的 provider/model 实测
+- [ ] 编辑 `examples/demo/cowork.config.js`：新增/删除 agent 与 workflow 任务后 `run` 仍可校验（config.test 覆盖错误提示）
 
 ## 七、如何复现
 
 ```bash
 cd H:\ai_works\CoWorkPrj
-node --test "test/*.test.js"        # 全量测试
-node bin/cowork.js run examples/demo # 端到端示例
-node bin/cowork.js init my-proj      # 新建项目模板
-node bin/cowork.js run my-proj       # 跑新项目
+node --test "test/*.test.js"                  # 全量测试（71 例）
+node bin/cowork.js run examples/demo          # 白天闭环
+node bin/cowork.js run examples/demo --night  # 夜班：自动开会 + night-shift/ 文档
+node bin/cowork.js plan examples/demo "做一个天气查询"          # 主题规划
+node bin/cowork.js run examples/demo --plan=plan/做一个天气查询/plan.json  # 按计划执行
+node bin/cowork.js serve examples/demo        # Web 面板（http://127.0.0.1:8765）
+node bin/cowork.js init my-proj && node bin/cowork.js run my-proj  # 新项目模板
 ```

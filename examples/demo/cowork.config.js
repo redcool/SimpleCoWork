@@ -12,7 +12,21 @@ export default {
     description: '示例：架构→双路开发→Oracle 一致性检查→审核→会议决策→协调者汇报（全部 mock，离线可跑）',
   },
 
-  providers: {
+  // ===== Agnes 真实模型接入示例（OpenAI 兼容协议） =====
+// 把下方 provider 取消注释，并把对应 agent 的 provider 改为 'agnes'、model 改为模型 id：
+//   agents: [ { id: 'dev', role: 'developer', provider: 'agnes', model: 'agnes-2.5-flash', ... } ]
+// 可用免费模型：agnes-2.5-flash（文本）、agnes-image-2.5-flash（图片）、agnes-video-v2.0（视频）
+// 付费/更强调理：agnes-2.0-flash、agnes-2.5-pro / agnes-2.5-pro-alpha / agnes-2.5-pro-beta、agnes-3.0-flash
+// 密钥：环境变量 AGNES_API_KEY（未配置时使用空密钥，仅适用于无需鉴权的本地网关场景）
+// agnes: {
+//   kind: 'openai',
+//   baseURL: 'https://apihub.agnes-ai.com/v1',
+//   apiKey: process.env.AGNES_API_KEY ?? '',
+//   defaultModel: 'agnes-2.5-flash',
+//   timeoutMs: 120000,
+// },
+
+providers: {
     mock: {
       kind: 'mock',
       script: {
