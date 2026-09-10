@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-// CoWork CLI：init / run / status / report / artifacts
+// CoWork CLI：init / run（--night/--resume）/ serve / status / report / artifacts
 import { resolve, join } from 'node:path';
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { loadConfig } from '../src/config.js';
-import { createProject, NightShiftLog } from '../src/index.js';
+import { createProject, NightShiftLog, startPanelServer } from '../src/index.js';
 import { buildReport } from '../src/reporter.js';
 
 const [, , cmd, arg] = process.argv;
@@ -16,6 +16,7 @@ async function main() {
     switch (cmd) {
       case 'init': initProject(arg); break;
       case 'run': await runProject(arg); break;
+      case 'serve': await servePanel(arg); break;
       case 'status': await readOnly(arg, async (project) => {
         for (const t of project.taskStore.list()) {
           const line = `- ${t.id}\t${t.state.padEnd(14)}\t尝试${t.attempts}/升级${t.escalations}\t${t.name}`;
@@ -66,6 +67,12 @@ async function runProject(p) {
       ? new NightShiftLog({ dir: join(dir, 'night-shift'), timeZone: cfg.engine.nightShift.timezone })
       : null,
   });
+  // --resume：从持久化状态继续（人工审批写回后的会议决策会自动带走 waiting/needs_revision 任务）
+  if (process.argv.includes('--resume')) {
+    if (!project.restoreState()) throw new Error('该目录尚无状态可恢复（缺失 .cowork/state.json），请先完整运行一次');
+    project.engine.resumeState();
+    console.log('↻ 已从持久化状态恢复并清理运行现场，继续推进…');
+  }
   const summary = await project.engine.runUntil({});
   project.saveState();
   const { report, markdown } = await buildReport(project, project.engine, { withNarrative: true });
@@ -77,7 +84,7 @@ async function runProject(p) {
     console.log('\n✔ 全部任务完成。报告已写入 .cowork/report.md');
     process.exitCode = 0;
   } else if (summary.state === 'blocked') {
-    console.log('\n⚠ 有事项需人工处理（详细见 .cowork/report.md）。处理后重新运行: node bin/cowork.js run <dir>');
+    console.log('\n⚠ 有事项需人工处理（详细见 .cowork/report.md）。可在 Web 面板审批后恢复: node bin/cowork.js serve <dir>，再 node bin/cowork.js run <dir> --resume');
     process.exitCode = 2;
   } else if (summary.state === 'failed') {
     console.log('\n✘ 存在失败任务（详细见 .cowork/report.md）');
@@ -86,6 +93,18 @@ async function runProject(p) {
     console.log(`\n… 流程未走完（状态 ${summary.state}），可再次运行推进。`);
     process.exitCode = 3;
   }
+}
+
+async function servePanel(p) {
+  const dir = dirOf(p ?? '.');
+  if (!existsSync(join(storeOf(dir), 'state.json'))) {
+    throw new Error('该目录尚未运行过（缺少 .cowork/state.json），请先执行 node bin/cowork.js run <dir>');
+  }
+  const portArg = process.argv.find((a) => /^--port=/.test(a));
+  const port = portArg ? Number(portArg.split('=')[1]) : 8765;
+  const { url } = await startPanelServer({ projectDir: dir, port, host: '127.0.0.1' });
+  console.log(`CoWork 面板已启动: ${url}`);
+  console.log('（Ctrl+C 停止；审批写回后请执行 node bin/cowork.js run <dir> --resume 续跑）');
 }
 
 async function readOnly(p, fn) {
@@ -100,15 +119,19 @@ function usage() {
   console.log(`CoWork — 多 Agent 协作系统
 
 用法:
-  node bin/cowork.js init [dir]          初始化项目配置模板
-  node bin/cowork.js run [dir] [--night] 运行协作流程并生成报告（--night 强制夜班静默模式）
-  node bin/cowork.js status [dir]        查看任务/状态概览
-  node bin/cowork.js report [dir]        生成并打印汇报（读历史状态）
-  node bin/cowork.js artifacts [dir]     列出全部产物版本
+  node bin/cowork.js init [dir]                    初始化项目配置模板
+  node bin/cowork.js run [dir] [--night] [--resume] 运行协作流程并生成报告
+                                                    --night  强制夜班静默模式（问题自动开会+写文档）
+                                                    --resume 从 .cowork/state.json 恢复续跑（人工审批后使用）
+  node bin/cowork.js serve [dir] [--port=N]        启动 Web 面板（任务/产物/会议审批/夜班文档）
+  node bin/cowork.js status [dir]                  查看任务/状态概览
+  node bin/cowork.js report [dir]                  生成并打印汇报（读历史状态）
+  node bin/cowork.js artifacts [dir]               列出全部产物版本
 
 示例:
   node bin/cowork.js run examples/demo
-  node bin/cowork.js run examples/demo --night   # 夜班模式：问题自动开会讨论并写 night-shift/ 文档`);
+  node bin/cowork.js run examples/demo --night     # 夜班模式：问题自动开会讨论并写 night-shift/ 文档
+  node bin/cowork.js serve examples/demo           # 打开 http://127.0.0.1:8765 审批 / 查看夜班记录`);
 }
 
 const TEMPLATE = `// CoWork 项目配置模板

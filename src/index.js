@@ -23,6 +23,7 @@ export { evaluateRules, evaluateRule, verdictFor, checksum, isJsValid } from './
 export { parseModelOutput, buildPrompt, applyActions, formatInput, truncate, parseOutputLoose } from './runner.js';
 export { runCommand } from './exec.js';
 export { NightShiftLog, isInNightShift, rangeCovers, toMinutes, minutesInZone, dateKey } from './nightshift.js';
+export { createPanelServer, startPanelServer, buildStateView, applyDecision } from './web/server.js';
 export {
   normalizeConfig, validateConfig, assertConfig, loadConfig, findCycle,
   DEFAULT_PROMPTS, ROLES, RISKS, defaultEngine,

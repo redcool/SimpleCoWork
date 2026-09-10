@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>CoWork 面板</title>
+<style>
+  :root { --bg:#0f1420; --card:#171e2e; --line:#263250; --fg:#dce3f0; --muted:#8aa0c0; --ok:#34d399; --warn:#fbbf24; --bad:#f87171; --acc:#60a5fa; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.6 "Segoe UI", system-ui, sans-serif; }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  .pill { padding:2px 10px; border-radius:999px; font-size:12px; border:1px solid var(--line); }
+  .pill.ok { color:var(--ok); border-color:var(--ok); }
+  .pill.warn { color:var(--warn); border-color:var(--warn); }
+  .pill.bad { color:var(--bad); border-color:var(--bad); }
+  main { padding:20px 24px; display:grid; gap:24px; max-width:1200px; margin:0 auto; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; overflow:hidden; }
+  h2 { font-size:15px; margin:0 0 12px; color:var(--acc); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { color:var(--muted); font-weight:600; position:sticky; top:0; background:var(--card); }
+  .bar { height:8px; background:#0b0f1a; border-radius:99px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,var(--acc),var(--ok)); }
+  .err { color:var(--bad); word-break:break-all; }
+  textarea, input[type=text] { width:100%; background:#0b0f1a; color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; font:inherit; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .actions td button { margin-right:6px; }
+  .hidden { display:none; }
+  pre { background:#0b0f1a; border:1px solid var(--line); border-radius:6px; padding:12px; overflow:auto; white-space:pre-wrap; max-height:420px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>CoWork 面板</h1>
+  <span id="projName" class="pill">—</span>
+  <span id="state" class="pill">…</span>
+  <span id="progress" class="pill">—</span>
+  <span style="flex:1"></span>
+  <button onclick="refresh()">刷新</button>
+</header>
+<main>
+  <section><h2>进度总览</h2><div class="bar"><i id="bar" style="width:0%"></i></div></section>
+
+  <section><h2>任务</h2><table><thead><tr><th>ID</th><th>名称</th><th>Agent</th><th>状态</th><th>尝试</th><th>升级</th><th>错误</th></tr></thead><tbody id="tasks"></tbody></table></section>
+
+  <section><h2>会议与人工审批</h2>
+    <table><thead><tr><th>ID</th><th>主题</th><th>状态</th><th>决策</th><th>操作</th></tr></thead><tbody id="meetings"></tbody></table>
+    <div id="approveForm" class="hidden" style="margin-top:12px">
+      <h3 style="margin:8px 0">审批会议（填写决策与分工）</h3>
+      <input type="hidden" id="afMeetingId" />
+      <label>决策结论<br/><input type="text" id="afDecision" placeholder="例如：修复 src/api.js 并重新提交" /></label>
+      <label style="margin-top:8px;display:block">理由<br/><textarea id="afReason" rows="2" placeholder="决策理由"></textarea></label>
+      <label style="margin-top:8px;display:block">分工（每行一个：任务ID | 补救指令）<br/><textarea id="afActions" rows="3" placeholder="t-dev | 确保 src/api.js 包含 module.exports"></textarea></label>
+      <div style="margin-top:8px"><button onclick="submitApproval()">提交审批并写回</button> <button onclick="closeApproval()">取消</button></div>
+    </div>
+  </section>
+
+  <section><h2>产物</h2><table><thead><tr><th>ID</th><th>状态</th><th>生产者</th><th>文件</th><th>摘要</th></tr></thead><tbody id="artifacts"></tbody></table></section>
+
+  <section><h2>审核记录</h2><table><thead><tr><th>ID</th><th>任务</th><th>结论</th><th>问题</th></tr></thead><tbody id="reviews"></tbody></table></section>
+
+  <section><h2>夜班记录</h2><div id="nightList"></div><pre id="nightDoc" class="hidden"></pre></section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let state = null;
+
+async function refresh() {
+  const r = await fetch('/api/state');
+  const data = await r.json();
+  if (data.error) { $('state').textContent = data.error; $('state').className = 'pill bad'; return; }
+  state = data;
+  const s = data.summary || {};
+  $('projName').textContent = data.project?.name ?? '';
+  $('state').textContent = `状态 ${s.state}（${s.progressPct}%）`;
+  $('state').className = 'pill ' + (s.state === 'completed' ? 'ok' : s.state === 'blocked' || s.state === 'failed' ? 'bad' : 'warn');
+  $('progress').textContent = `${s.approved}/${s.total} 完成`;
+  $('bar').style.width = (s.progressPct || 0) + '%';
+  renderTasks(data.tasks || []);
+  renderMeetings(data.meetings || []);
+  renderArtifacts(data.artifacts || []);
+  renderReviews(data.reviews || []);
+  renderNight();
+}
+
+function esc(x) { return String(x ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+
+function renderTasks(tasks) {
+  $('tasks').innerHTML = tasks.map((t) => `<tr>
+    <td>${esc(t.id)}</td><td>${esc(t.name)}</td><td>${esc(t.agentId)}</td>
+    <td><span class="pill ${t.state === 'approved' ? 'ok' : ['failed','blocked'].includes(t.state) ? 'bad' : 'warn'}">${esc(t.state)}</span></td>
+    <td>${t.attempts}/${t.escalations}</td><td>${t.escalations}</td>
+    <td class="err">${esc(t.lastError || '')}</td></tr>`).join('') || '<tr><td colspan=7>（无）</td></tr>';
+}
+
+function renderMeetings(meetings) {
+  $('meetings').innerHTML = meetings.map((m) => `<tr>
+    <td>${esc(m.id)}</td><td>${esc(m.subject)}</td>
+    <td><span class="pill ${m.status === 'decided' ? 'ok' : m.status === 'escalated' ? 'bad' : 'warn'}">${esc(m.status)}</span></td>
+    <td>${m.decision ? esc(m.decision.decision) : '—'}</td>
+    <td>${m.status === 'escalated' ? `<button onclick="openApproval('${esc(m.id)}','${esc(m.taskId || '')}')">审批</button>` : ''}</td></tr>`).join('') || '<tr><td colspan=5>（无）</td></tr>';
+}
+
+function openApproval(meetingId, taskId) {
+  $('afMeetingId').value = meetingId;
+  $('afDecision').value = '';
+  $('afReason').value = '';
+  $('afActions').value = taskId ? `${taskId} | 按此分工修复并重新提交` : '';
+  $('approveForm').classList.remove('hidden');
+}
+
+function closeApproval() { $('approveForm').classList.add('hidden'); }
+
+async function submitApproval() {
+  const actions = $('afActions').value.split('\n').map((l) => l.trim()).filter(Boolean)
+    .map((l) => { const [taskId, ...rest] = l.split('|'); return { taskId: taskId.trim(), instruction: rest.join('|').trim() }; })
+    .filter((a) => a.taskId && a.instruction);
+  const body = {
+    meetingId: $('afMeetingId').value,
+    decision: $('afDecision').value,
+    reason: $('afReason').value,
+    actions,
+  };
+  const r = await fetch('/api/decisions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await r.json();
+  if (!r.ok) { alert('审批失败：' + (data.error || r.status)); return; }
+  closeApproval();
+  await refresh();
+}
+
+function renderArtifacts(artifacts) {
+  $('artifacts').innerHTML = artifacts.map((a) => `<tr>
+    <td>${esc(a.id)}</td><td>${esc(a.state)}</td><td>${esc(a.producer)}</td>
+    <td>${(a.files || []).map((f) => esc(f)).join(', ')}</td><td>${esc(a.summary)}</td></tr>`).join('') || '<tr><td colspan=5>（无）</td></tr>';
+}
+
+function renderReviews(reviews) {
+  $('reviews').innerHTML = reviews.map((r) => `<tr>
+    <td>${esc(r.id)}</td><td>${esc(r.taskId)}</td>
+    <td><span class="pill ${r.verdict === 'pass' ? 'ok' : r.verdict === 'warn' ? 'warn' : 'bad'}">${esc(r.verdict)}</span></td>
+    <td>${esc((r.issues || []).join('；'))}</td></tr>`).join('') || '<tr><td colspan=4>（无）</td></tr>';
+}
+
+async function renderNight() {
+  const r = await fetch('/api/night');
+  const data = await r.json();
+  const days = data.days || [];
+  $('nightList').innerHTML = days.map((d) => `<button onclick="showNight('${d}')">${d}</button>`).join(' ') || '<span>（暂无夜班记录）</span>';
+}
+
+async function showNight(day) {
+  const r = await fetch('/api/night?day=' + encodeURIComponent(day));
+  const data = await r.json();
+  $('nightDoc').textContent = data.markdown || '（无内容）';
+  $('nightDoc').classList.remove('hidden');
+}
+
+refresh();
+setInterval(refresh, 8000);
+</script>
+</body>
+</html>

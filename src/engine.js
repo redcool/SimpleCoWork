@@ -479,6 +479,27 @@ export class WorkflowEngine {
     };
   }
 
+  // ---------- 恢复续跑 ----------
+
+  /** 从持久化快照恢复后的状态清理：running 任务重入队；waiting 任务按会议是否已审批分流 */
+  resumeState() {
+    for (const t of this.tasks.list({ state: 'running' })) {
+      t.lastError = '中断恢复：任务重新入队';
+      this.tasks.transition(t.id, 'failed', { lastError: t.lastError });
+    }
+    for (const t of this.tasks.list({ state: 'waiting' })) {
+      const mid = t.meta?.pendingMeetingId;
+      const m = mid ? this.meetings.get(mid) : null;
+      if (m && m.status === 'decided') {
+        this.tasks.transition(t.id, 'needs_revision');
+      } else {
+        t.meta = { ...(t.meta ?? {}), humanBlocked: true };
+        t.lastError = `等待会议/人工处理（会议 ${mid ?? '未知'}）`;
+        this.tasks.transition(t.id, 'failed', { lastError: t.lastError });
+      }
+    }
+  }
+
   // ---------- 工具 ----------
 
   /** 跟踪进行中的会议决策 promise（内部已吞掉拒绝，这里只负责登记/清理） */
