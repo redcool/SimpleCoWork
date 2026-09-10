@@ -84,14 +84,19 @@ export function validateConfig(cfg) {
   }
 
   // agents
+  // 角色白名单已放开：允许任意自定义角色（小写字母开头标识符），
+  // 内置保留角色（architect/planner/developer/reviewer/manager/meeting）仍具有特殊引擎语义。
   const agentIds = new Set();
   for (const a of cfg.agents ?? []) {
     if (!isValidName(a.id)) errors.push(`agents.id 非法: ${JSON.stringify(a.id)}`);
     else if (agentIds.has(a.id)) errors.push(`agents.id 重复: ${a.id}`);
     agentIds.add(a.id);
-    if (!ROLES.has(a.role)) errors.push(`agent ${a.id} 的 role 非法: ${a.role}（可选: ${[...ROLES].join('/')}）`);
+    if (typeof a.role !== 'string' || !/^[a-z][a-z0-9-]*$/.test(a.role)) {
+      errors.push(`agent ${a.id} 的 role 非法: ${JSON.stringify(a.role)}（需小写字母开头标识符，如 producer/game-designer/artist；内置保留角色: ${[...ROLES].join('/')}）`);
+    }
     if (!cfg.providers || !cfg.providers[a.provider]) errors.push(`agent ${a.id} 引用了未配置的 provider: ${a.provider}`);
     if (typeof a.model !== 'string' || !a.model) errors.push(`agent ${a.id} 缺少 model`);
+    if (a.accepts !== undefined && !Array.isArray(a.accepts)) errors.push(`agent ${a.id} 的 accepts 必须是数组（评审者接受审阅的产物/角色）`);
   }
 
   // workflow tasks

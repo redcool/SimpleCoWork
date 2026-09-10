@@ -1,5 +1,5 @@
 // Runner：把"任务 + 输入产物 + agent 人设"组装成提示词；解析模型输出；执行 write/exec 动作
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCommand } from './exec.js';
 
@@ -120,9 +120,15 @@ export function applyActions(actions, { workDir = null, commandTimeoutMs = 60000
       }
     } else if (action.type === 'exec') {
       const cwd = action.cwd ? (workDir ? join(workDir, action.cwd) : action.cwd) : workDir;
-      execResults.push(
-        runCommand(action.command, { cwd: cwd ?? undefined, timeoutMs: commandTimeoutMs, expectedExit: action.expectedExit }),
-      );
+      const res = runCommand(action.command, { cwd: cwd ?? undefined, timeoutMs: commandTimeoutMs, expectedExit: action.expectedExit });
+      // 命令产物留档：outFile 重定向的文件回读为产物证据（磁盘工作目录模式）
+      if (res.ok && action.outFile && cwd) {
+        const outAbs = join(cwd, action.outFile);
+        if (existsSync(outAbs)) {
+          files.push({ path: action.outFile, content: readFileSync(outAbs, 'utf8') });
+        }
+      }
+      execResults.push(res);
     }
   }
   return { files, execResults };

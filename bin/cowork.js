@@ -12,18 +12,20 @@ const planArg = () => process.argv.find((a) => a.startsWith('--plan='))?.slice('
 const dirOf = (p) => resolve(process.cwd(), p ?? '.');
 const storeOf = (p) => join(p, '.cowork');
 
-/** 零依赖 .env 加载：把 <项目目录>/.env 的 KEY=VALUE 注入 process.env（已存在则不覆盖） */
+/** 零依赖 .env 加载：读取 <项目目录>/.env 与 <当前工作目录>/.env（后者方便在项目根放密钥），KEY=VALUE 注入 process.env（已存在则不覆盖） */
 function loadDotEnv(dir) {
-  const file = join(dir, '.env');
-  if (!existsSync(file)) return;
-  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const t = line.trim();
-    if (!t || t.startsWith('#')) continue;
-    const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(t);
-    if (!m) continue;
-    let v = m[2].trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
-    if (!(m[1] in process.env)) process.env[m[1]] = v;
+  const candidates = [join(dir, '.env'), join(process.cwd(), '.env')];
+  for (const file of candidates) {
+    if (!existsSync(file)) continue;
+    for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) continue;
+      const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(t);
+      if (!m) continue;
+      let v = m[2].trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      if (!(m[1] in process.env)) process.env[m[1]] = v;
+    }
   }
 }
 

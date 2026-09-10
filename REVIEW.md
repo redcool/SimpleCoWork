@@ -12,6 +12,7 @@
 - 第二阶段（P8–P12）：nightshift / web / planner / resume 等新增模块测试全绿，最终 **71/71 测试通过**；
   `examples/demo` 实测跑通 4 条 CLI 链路：`run`（质量门→会议→补救→完成）、`run --night`（自动开会 + 夜班文档）、
   `plan + run --plan`（主题→模块 DAG→开发→验收→完成）、`serve`（面板 API）+ 人工审批 + `run --resume`（续跑闭环）。
+- 第三阶段（P13 工作室模式）：**76/76 测试通过**；`examples/game-studio-demo` 实跑（制作人→策划→美术/程序并行→QA/艺术总监分级审查→导演汇报 + 冲突会议裁决闭环）。
 
 ## 二、需求覆盖矩阵（对照用户原始需求）
 
@@ -26,6 +27,7 @@
 | 7 | 可加 Web UI | `cowork serve`（零依赖 node:http）：进度/任务/产物/审核/会议/夜班文档 + 人工审批接口（写回决策） | web.test（页面/API/审批/夜班列表）、CLI 冒烟 |
 | 8 | 夜班静默工作 | `engine.nightShift{enabled,timezone,ranges}`：时段内问题不阻塞，自动开会并生成夜班文档；`--night` 强制；时钟可注入 | nightshift.test（边界/跨天/时区/集成 10 例）、demo --night 文档实测 |
 | 9 | 可复用于各类 agent coder（如 dsh）：给主题即开工 | `cowork plan <dir> "主题"`：planner agent 拆解模块 DAG → `plan.json`/`plan.md` → `run --plan` 执行（模块/角色/依赖/验收/规则全自动） | planner.test（6 例）、demo plan→run 实测 |
+| 10 | 角色划分以工作室视角合理（游戏/作品） | 自定角色白名单放开 + reviewer `accepts` 按产物匹配 + 资产规则（min_size/json_valid）+ exec outFile 证据回读 | studio.test（5 例）、game-studio-demo CLI 实跑 |
 
 ## 三、模块清单与测试覆盖
 
@@ -48,7 +50,9 @@
 | CLI | bin/cowork.js | init/plan/run(--night/--resume/--plan)/serve/status/report/artifacts | 实跑 4 条链路 |
 | 集成 | test/*.test.js | 全流程 + 持久化回放 + 闭环 | 71 例全部通过 |
 
-共 **71 个测试，全部通过**；`node --check` 全部 JS 文件零语法错误。
+共 **76 个测试，全部通过**；`node --check` 全部 JS 文件零语法错误。
+
+工作室模式新增/改动：`src/config.js`（角色白名单放开 + accepts 校验）、`src/engine.js`（#reviewerFor 语义化：accepts 精确匹配→通用兜底、评审者不自审、架构/规划设计产物内建门自审）、`src/oracle.js`（min_size/json_valid 内容类规则）、`src/runner.js`（exec outFile 回读为产物证据）、`examples/game-studio-demo/`（P13 演示）、`test/studio.test.js`（5 例）。
 
 ## 四、端到端实测记录（examples/demo）
 
@@ -72,32 +76,45 @@
 - `serve` 启动，`GET /`、`/api/state`（blocked 状态）、`/api/night`（夜班日列表与 markdown）✔
 - escalated 会议 → 面板审批（决策/理由/分工写回 state.json，任务置 needs_revision）→ `run --resume` 续跑 → completed ✔
 
+### 4.5 工作室模式（game-studio-demo，P13）
+- 制作人定愿景（vision.md）→ 策划产出 GDD（定义资产规格）→ 美术 & 程序**并行** ✔
+- 美术 v1 不符合策划规格（art/player.txt 缺 hero）→ 质量门拦截（ART1 fail）→ 会议 m-1 **由导演裁决**（分工重画指令）✔
+- 美术 v2 重画通过 → **艺术总监**审查（accepts:['art']）；程序产物由 **QA** 审查（accepts:['code']）+ `node --check` 证据经 exec outFile 回读进产物 ✔
+- 导演汇报 report-v1 → completed 5/5 ✔
+
+### 4.6 真实模型（agnes，P8）
+- `agnes-2.5-flash` → `apihub.agnes-ai.com/v1` 键控连通（12.6s 一次生成）✔
+- `examples/agnes-demo` 使用真实模型完整跑通：架构→双开发→质量门→审核→汇报，**4/4 approved，100%**（一键通过、无需会议）✔
+
 ## 五、已知限制（后续工作）
 
-1. **真实模型未联网实测**：openai provider 已实现并单测；Agnes 接入按 README/demo 注释配置即可（`AGNES_API_KEY`），建议在用户环境实测一遍（P13 候选）。
+1. **美术资产的"审美质量"机检有限**：min_size/json_valid 只能防"空/坏文件"与格式问题；画风、构图、可玩性最终仍依赖「评审 agent 判断 + Web 面板人工审批」。图片内容级校验（如尺寸/配色直方图）可作为规则类型扩展。
 2. **断点续跑粒度**：`--resume` 支持"人工审批后续跑"与中断清理（running→重入队、waiting→按会议分流），但任务一旦提交即视为该次运行的产物，不跨运行合并。
-3. **执行测试命令的证据**：exec 动作支持（stdio inherit + 退出码），demo 演示尚未接入 lint/单测命令；真实项目建议配置 exec 动作留档（outFile）。
-4. **Token/成本统计、Git 分支隔离、多项目并发、agent 动态增删**为路线图后续项。
-5. **JS 语法校验**用 `vm.Script`（CommonJS 风格），ESM `import` 语法目标代码不支持（规则类型可扩展）。
-6. **面板只读单一审批接口**：无跨站鉴权（默认绑定 127.0.0.1），面向本机使用。
+3. **真实模型完整流水线已验证**（agnes-demo 4/4），但 token/延迟统计未收集；面板无鉴权（默认 127.0.0.1，面向本机）。
+4. **Token/成本统计、Git 分支隔离、多项目并发、agent 动态增删、ESM 语法校验扩展**为路线图后续项。
+5. **制作人/策划等自定义角色语义依赖 prompt 约定**（引擎只注册角色，不内置分阶段 check）；角色职责说明书建议沉淀为 doc/。
+6. **JS 语法校验**用 `vm.Script`（CommonJS 风格），ESM `import` 语法目标代码不支持（规则类型可扩展）。
 
 ## 六、人工验收清单（请用户核对）
 
-- [ ] `node --test "test/*.test.js"` 输出 71/71 通过
+- [ ] `node --test "test/*.test.js"` 输出 76/76 通过
 - [ ] `node bin/cowork.js run examples/demo` 最终状态 completed（100%，4/4）
+- [ ] `node bin/cowork.js run examples/game-studio-demo`：制作人→策划→美术/程序→QA/艺术总监分级审查→导演汇报，含会议 m-1 裁决（美术 v1 拦截→v2 通过）
 - [ ] `node bin/cowork.js run examples/demo --night` 后查看 `examples/demo/night-shift/*.md`（问题/分析过程/决定 三段格式）
 - [ ] `node bin/cowork.js plan examples/demo "你的主题"` → `run --plan=plan/<主题>/plan.json` 一键开工并 completed
 - [ ] `node bin/cowork.js serve examples/demo` → 浏览器 http://127.0.0.1:8765 查看面板与夜班记录
-- [ ] 按 README「接入真实模型」配置 Agnes/OpenAI provider 并切换 agents 的 provider/model 实测
-- [ ] 编辑 `examples/demo/cowork.config.js`：新增/删除 agent 与 workflow 任务后 `run` 仍可校验（config.test 覆盖错误提示）
+- [ ] `node bin/cowork.js run examples/agnes-demo` 用真实 agnes-2.5-flash 跑通（4/4；消耗少量免费额度）
+- [ ] 自定义角色试用：在 config.agents 增加 `{ id:'writer', role:'writer', ... }`（prompt 里约定职责）与对应任务即可扩展工作室
 
 ## 七、如何复现
 
 ```bash
 cd H:\ai_works\CoWorkPrj
-node --test "test/*.test.js"                  # 全量测试（71 例）
+node --test "test/*.test.js"                  # 全量测试（76 例）
 node bin/cowork.js run examples/demo          # 白天闭环
+node bin/cowork.js run examples/game-studio-demo  # 工作室模式（冲突会议裁决 + 分级审查）
 node bin/cowork.js run examples/demo --night  # 夜班：自动开会 + night-shift/ 文档
+node bin/cowork.js run examples/agnes-demo    # 真实模型（agnes-2.5-flash）端到端
 node bin/cowork.js plan examples/demo "做一个天气查询"          # 主题规划
 node bin/cowork.js run examples/demo --plan=plan/做一个天气查询/plan.json  # 按计划执行
 node bin/cowork.js serve examples/demo        # Web 面板（http://127.0.0.1:8765）

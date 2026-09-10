@@ -8,7 +8,7 @@ export function checksum(content) {
 }
 
 /** 仅对"内容类"规则生效：规则声明 ifPresent 时，产物不含该文件则跳过判定 */
-const CONTENT_RULES = new Set(['contains', 'not_contains', 'regex', 'js_syntax']);
+const CONTENT_RULES = new Set(['contains', 'not_contains', 'regex', 'js_syntax', 'min_size', 'json_valid']);
 
 /** 单个规则求值：返回 { ruleId, description, severity, check, passed, detail, applicable } */
 export function evaluateRule(rule, fileMap) {
@@ -55,6 +55,29 @@ export function evaluateRule(rule, fileMap) {
       case 'js_syntax': {
         res.passed = !!file && isJsValid(file.content);
         res.detail = res.passed ? `${rule.file} 语法合法` : `${rule.file} 语法错误`;
+        break;
+      }
+      case 'min_size': {
+        const min = Number(rule.min ?? rule.size?.min ?? 1);
+        const len = file ? (file.content ? file.content.length : file.size ?? 0) : 0;
+        res.passed = !!file && len >= min;
+        res.detail = res.passed
+          ? `${rule.file} 内容长度 ${len} ≥ ${min}`
+          : `${rule.file} 内容长度 ${len} 小于下限 ${min}（可能是空/占位资产）`;
+        break;
+      }
+      case 'json_valid': {
+        let ok = false;
+        if (file) {
+          try {
+            JSON.parse(file.content);
+            ok = true;
+          } catch {
+            ok = false;
+          }
+        }
+        res.passed = ok;
+        res.detail = ok ? `${rule.file} 是合法 JSON` : `${rule.file} 不是合法 JSON`;
         break;
       }
       default:

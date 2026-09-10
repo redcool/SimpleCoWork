@@ -159,6 +159,23 @@ node bin/cowork.js run <dir> --plan=plan/<主题>/plan.json   # 按计划执行�
 - 计划顶层规则经 `config.workflow.rules` 注入 Oracle 质量门；内容类规则建议 `ifPresent: true`（产物缺该文件时自动跳过，避免跨模块误判）。
 - 无 `planner` 角色时回退 `architect`。
 
+## 工作室模式（自定义角色）
+
+角色白名单已放开：**任意小写字母开头的标识符都可作为角色**（`producer`/`game-designer`/`artist`/`programmer`/`writer`/`qa`…）。
+内置保留角色 `architect`/`planner`/`developer`/`reviewer`/`manager`/`meeting` 仍具有特殊引擎语义（架构出规则、开发者不自审、评审者把关、协调者决策/汇报）。
+
+按产物匹配评审：`reviewer` 角色可加 `accepts: ['art','code']`，引擎优先选 accepts 命中该任务产物/生产者角色的评审者；无命中时通用兜底；评审者不自审；架构/规划设计产物由内建质量门自审。
+
+```js
+{ id: 'artdirector', role: 'reviewer', title: '艺术总监', provider: 'mock', model: 'm',
+  accepts: ['art'], prompt: '按 GDD 资产规格审查美术资产。' },
+```
+
+资产质量门规则（适合图片/配置文件类资产）：`min_size`（内容长度下限，防空占位资产）、`json_valid`（合法 JSON）；
+exec 动作的 `outFile` 成功后回读为产物文件（测试命令证据留档）。
+
+完整工作室流水线见 `examples/game-studio-demo`（制作人→策划→美术/程序并行→QA/艺术总监分级审查→导演汇报，含"美术不符合策划规格→会议裁决→重画通过"闭环）。
+
 ## 领域模型
 
 | 对象 | 含义 |

@@ -78,6 +78,7 @@
 | 本会话 | P10 | Web 面板（serve）+ 人工审批 + run --resume 恢复续跑 | ✅ |
 | 本会话 | P11 | 规划器：cowork plan 主题→模块 DAG；run --plan 执行 | ✅ |
 | 本会话 | P12 | 全量测试 71/71、语法检查全文件、REVIEW.md 增补 + 4 条 CLI 端到端实测 | ✅ |
+| 本会话 | P13 | 工作室模式：自定义角色（producer/策划/美术/程序/QA/艺术总监/导演）+ accepts 按产物匹配评审 + min_size/json_valid 资产规则 + exec outFile 回读；game-studio-demo 冲突会议闭环；测试 76/76 | ✅ |
 
 ## 五、最终验收标准（总）
 
@@ -113,3 +114,16 @@
 ### P12 整体测试与审核（二阶段）✅
 - 交付：全量 `node --test "test/*.test.js"` **71/71 通过**、`node --check` 全文件零错误、REVIEW.md 增补（9 项需求覆盖矩阵、4 条 CLI 端到端实测）、CLI 实跑（run / --night / --plan / serve+resume）✅
 - 验收：全部测试绿；人工验收清单已更新 ✅
+
+## 七、三阶段计划（P13：工作室模式）
+
+> 背景：用户要求评估角色划分是否合理（以游戏/作品工作室视角）。评估结论——现有"软件工厂"角色（架构/开发/审核/协调）对软件合理，但缺创意源头、专业职能与美术类验收。落地见 P13。
+
+### P13 工作室模式（自定义角色 + 按产物匹配评审 + 资产规则）✅
+- 交付：
+  1. 角色白名单放开：任意小写标识符角色（producer/game-designer/artist/programmer/…），architect/planner/developer/reviewer/manager 保留特殊引擎语义（config.js 校验改为名目+accepts 数组校验）；
+  2. 评审者按产物匹配：reviewer agent 支持 `accepts:['art','code']`，引擎先精确匹配（产物名/生产者角色），无匹配通用兜底；评审者不自审；架构/规划设计产物由内建门自审（engine #reviewerFor 语义化重构）；
+  3. Oracle 资产规则：`min_size`（防空占位资产）+ `json_valid`（合法 JSON），内容类规则支持 ifPresent 跳过；
+  4. exec `outFile` 成功时回读为产物文件（评测命令证据留档到产物版本）；
+  5. `examples/game-studio-demo`：制作人→策划→美术/程序并行→QA/艺术总监分别审查→导演汇报；美术 v1 不符合策划规格 → 质量门拦截 → 会议裁决 → 重画 v2 通过（冲突解决闭环）。
+- 验收：studio.test 5 例全绿（自定义角色校验/资产规则/accepts 匹配/兜底回退/demo 端到端）；**全量 76/76**；CLI 实跑 game-studio-demo completed（报道含会议决策与分级审查记录）✅

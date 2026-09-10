@@ -521,9 +521,29 @@ export class WorkflowEngine {
     this.reviews.add({ taskId: task.id, reviewerId, builtinChecks: checks, verdict, issues, comments });
   }
 
+  /** 选取审核者：优先 accepts 与任务匹配的 reviewer（按产物名或生产者角色）；
+   *  无匹配时按语义回退——评审者不自审、架构/规划类设计产物由内建门自审，其余取第一个 reviewer 兜底 */
   #reviewerFor(task) {
-    if (this.agents.byRole(task.agentId)[0]) return null; // 该角色自己的任务不自我审核
-    return this.agents.byRole('reviewer')[0] ?? null;
+    const reviewers = this.agents.byRole('reviewer');
+    if (reviewers.length === 0) return null;
+
+    let producer = null;
+    try { producer = this.agents.get(task.agentId); } catch { /* 未知 id 交给上游报错 */ }
+
+    const matched = (r) => {
+      const accepts = Array.isArray(r.accepts) ? r.accepts : [];
+      if (accepts.length === 0) return false; // 通用兜底，不参与精确匹配
+      const byOutput = (task.outputs ?? []).some((o) => accepts.some((a) => o === a || o.startsWith(`${a}-`)));
+      const byRole = accepts.includes(task.agentId);
+      return byOutput || byRole;
+    };
+
+    const exact = reviewers.find(matched);
+    if (exact) return exact.id === task.agentId ? null : exact; // 唯一候选是自己 → 不自我审核
+
+    // 无精确匹配：评审角色不自审；架构/规划产物（规则来源本身）由内建质量门自审
+    if (producer && (producer.role === 'reviewer' || producer.role === 'architect' || producer.role === 'planner')) return null;
+    return reviewers.find((r) => !Array.isArray(r.accepts) || r.accepts.length === 0) ?? reviewers[0];
   }
 
   #collectRules() {
