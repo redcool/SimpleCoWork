@@ -12,6 +12,21 @@ const planArg = () => process.argv.find((a) => a.startsWith('--plan='))?.slice('
 const dirOf = (p) => resolve(process.cwd(), p ?? '.');
 const storeOf = (p) => join(p, '.cowork');
 
+/** 零依赖 .env 加载：把 <项目目录>/.env 的 KEY=VALUE 注入 process.env（已存在则不覆盖） */
+function loadDotEnv(dir) {
+  const file = join(dir, '.env');
+  if (!existsSync(file)) return;
+  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const m = /^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(t);
+    if (!m) continue;
+    let v = m[2].trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+    if (!(m[1] in process.env)) process.env[m[1]] = v;
+  }
+}
+
 async function main() {
   try {
     switch (cmd) {
@@ -55,6 +70,7 @@ function initProject(p) {
 
 async function runProject(p) {
   const dir = dirOf(p ?? '.');
+  loadDotEnv(dir);
   const cfg = await loadConfig(join(dir, 'cowork.config.js'));
   // --plan=<file>：载入用户主题生成的计划（模块任务 DAG + 架构规则），替换 workflow
   const planFile = planArg();
@@ -106,6 +122,7 @@ async function runProject(p) {
 
 async function planProject(p) {
   const dir = dirOf(p ?? '.');
+  loadDotEnv(dir);
   // 用法: cowork plan <dir> "主题" → 主题从 argv[4] 起（argv[3] 是目录）
   const theme = process.argv.slice(4).filter((a) => !a.startsWith('--')).join(' ').trim();
   const cfg = await loadConfig(join(dir, 'cowork.config.js'));
@@ -123,6 +140,7 @@ async function planProject(p) {
 
 async function servePanel(p) {
   const dir = dirOf(p ?? '.');
+  loadDotEnv(dir);
   if (!existsSync(join(storeOf(dir), 'state.json'))) {
     throw new Error('该目录尚未运行过（缺少 .cowork/state.json），请先执行 node bin/cowork.js run <dir>');
   }
@@ -135,6 +153,7 @@ async function servePanel(p) {
 
 async function readOnly(p, fn) {
   const dir = dirOf(p ?? '.');
+  loadDotEnv(dir);
   const cfg = await loadConfig(join(dir, 'cowork.config.js'));
   const project = createProject({ config: cfg, dir: storeOf(dir), persist: true });
   if (!project.restoreState()) throw new Error('该目录尚未运行过（缺少 .cowork/state.json），请先执行 run');

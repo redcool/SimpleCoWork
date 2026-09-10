@@ -108,7 +108,14 @@ agnes: {
 },
 ```
 
-把 agent 的 `provider` 指向 `agnes`、`model` 填模型 id 即可；不同角色可配不同模型。未配置 `AGNES_API_KEY` 时以空密钥请求（适用于无需鉴权的场景）。图片/视频类 Agnes 模型可用于对应的多模态 agent（产物流协议不变）。
+把 agent 的 `provider` 指向 `agnes`、`model` 填模型 id 即可；不同角色可配不同模型。密钥从以下位置加载（优先级：进程环境变量 → `<项目目录>/.env`，后者由 CLI 自动读取且已被 `.gitignore` 忽略）：
+
+```bash
+# 推荐：在项目目录建 .env（不会进 git）
+echo "AGNES_API_KEY=sk-..." > .env
+```
+
+> 本机已从 dsh 配置（`settings.yaml` 的 `apiKeyEnv: AGNES_API_KEY` → 系统级环境变量）找到密钥并写入 `H:\ai_works\CoWorkPrj\.env`，`agnes-2.5-flash` 实测连通。图片/视频类 Agnes 模型同样走该 provider（产物流协议不变）。
 
 ## 夜班静默模式
 

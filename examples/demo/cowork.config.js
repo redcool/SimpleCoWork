@@ -17,7 +17,7 @@ export default {
 //   agents: [ { id: 'dev', role: 'developer', provider: 'agnes', model: 'agnes-2.5-flash', ... } ]
 // 可用免费模型：agnes-2.5-flash（文本）、agnes-image-2.5-flash（图片）、agnes-video-v2.0（视频）
 // 付费/更强调理：agnes-2.0-flash、agnes-2.5-pro / agnes-2.5-pro-alpha / agnes-2.5-pro-beta、agnes-3.0-flash
-// 密钥：环境变量 AGNES_API_KEY（未配置时使用空密钥，仅适用于无需鉴权的本地网关场景）
+// 密钥：dsh 系统级环境变量 AGNES_API_KEY（也可放 <项目目录>/.env，cowork CLI 自动加载；.env 已被 .gitignore 忽略）
 // agnes: {
 //   kind: 'openai',
 //   baseURL: 'https://apihub.agnes-ai.com/v1',
