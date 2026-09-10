@@ -20,18 +20,20 @@ export { WorkflowEngine };
 export { MeetingStore };
 export { buildReport, buildReportSnapshot, renderMarkdown, defaultNarrative } from './reporter.js';
 export { evaluateRules, evaluateRule, verdictFor, checksum, isJsValid } from './oracle.js';
-export { parseModelOutput, buildPrompt, applyActions, formatInput, truncate } from './runner.js';
+export { parseModelOutput, buildPrompt, applyActions, formatInput, truncate, parseOutputLoose } from './runner.js';
 export { runCommand } from './exec.js';
+export { NightShiftLog, isInNightShift, rangeCovers, toMinutes, minutesInZone, dateKey } from './nightshift.js';
 export {
   normalizeConfig, validateConfig, assertConfig, loadConfig, findCycle,
   DEFAULT_PROMPTS, ROLES, RISKS, defaultEngine,
 } from './config.js';
 
 /** 组装一个项目运行时：全部状态机 + 引擎 + 持久化
- * @param {{config:object, dir:string|null, persist:boolean}} opts
+ * @param {{config:object, dir:string|null, persist?:boolean, clock?:()=>Date, nightShiftLog?:object}} opts
  * dir 为持久化目录（.cowork 等）；persist=false 时纯内存（测试用）
+ * clock：注入时间源（夜班判定/测试）；nightShiftLog：夜班文档日志（默认不启用）
  */
-export function createProject({ config, dir = null, persist = true } = {}) {
+export function createProject({ config, dir = null, persist = true, clock = () => new Date(), nightShiftLog = null } = {}) {
   const bus = new EventBus();
   const store = new ProjectStore({ dir, persist });
   const providerRegistry = createProviderRegistry(config.providers);
@@ -47,6 +49,7 @@ export function createProject({ config, dir = null, persist = true } = {}) {
   const engine = new WorkflowEngine({
     config, bus, store, agentRegistry, providerRegistry,
     artifactStore, taskStore, reviewStore, meetingStore,
+    clock, nightShiftLog,
   });
 
   const project = {

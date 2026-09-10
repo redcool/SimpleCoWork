@@ -22,6 +22,11 @@ export function defaultEngine() {
     agentTimeoutMs: 120000,
     commandTimeoutMs: 60000,
     meeting: { autoDecide: false },
+    nightShift: {
+      enabled: false,
+      timezone: 'Asia/Shanghai',
+      ranges: [{ start: '22:00', end: '08:30' }],
+    },
   };
 }
 
@@ -56,6 +61,11 @@ export function normalizeConfig(input = {}) {
       ...defaultEngine(),
       ...(cfg.engine ?? {}),
       meeting: { ...defaultEngine().meeting, ...(cfg.engine?.meeting ?? {}) },
+      nightShift: {
+        ...defaultEngine().nightShift,
+        ...(cfg.engine?.nightShift ?? {}),
+        ranges: (cfg.engine?.nightShift?.ranges ?? defaultEngine().nightShift.ranges).map((r) => ({ ...r })),
+      },
     },
   };
 }
@@ -113,6 +123,18 @@ export function validateConfig(cfg) {
     if (!Number.isInteger(eng[k]) || eng[k] < 1) errors.push(`engine.${k} 必须为正整数`);
   }
   if (typeof eng.meeting?.autoDecide !== 'boolean') errors.push('engine.meeting.autoDecide 必须为布尔');
+
+  // nightShift
+  const ns = eng.nightShift ?? {};
+  if (typeof ns.enabled !== 'boolean') errors.push('engine.nightShift.enabled 必须为布尔');
+  if (typeof ns.timezone !== 'string' || !ns.timezone) errors.push('engine.nightShift.timezone 必须为非空字符串（IANA 时区名）');
+  if (!Array.isArray(ns.ranges) || ns.ranges.length === 0) errors.push('engine.nightShift.ranges 至少需要一个 {start,end} 时间段');
+  for (const r of ns.ranges ?? []) {
+    for (const k of ['start', 'end']) {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(String(r?.[k] ?? ''));
+      if (!m) errors.push(`engine.nightShift.ranges 的 ${k} 必须是 HH:MM（当前: ${String(r?.[k])}）`);
+    }
+  }
 
   // DAG 环检测
   const cycle = findCycle(taskDefs.map((t) => ({ id: t.id, requires: t.requires ?? [] })));

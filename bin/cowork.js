@@ -3,7 +3,7 @@
 import { resolve, join } from 'node:path';
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { loadConfig } from '../src/config.js';
-import { createProject } from '../src/index.js';
+import { createProject, NightShiftLog } from '../src/index.js';
 import { buildReport } from '../src/reporter.js';
 
 const [, , cmd, arg] = process.argv;
@@ -53,7 +53,19 @@ function initProject(p) {
 async function runProject(p) {
   const dir = dirOf(p ?? '.');
   const cfg = await loadConfig(join(dir, 'cowork.config.js'));
-  const project = createProject({ config: cfg, dir: storeOf(dir), persist: true });
+  // --night：强制进入夜班静默模式（enabled + 覆盖全天时段，时间判定恒真）
+  if (process.argv.includes('--night')) {
+    cfg.engine.nightShift.enabled = true;
+    cfg.engine.nightShift.ranges = [{ start: '00:00', end: '23:59' }];
+  }
+  const project = createProject({
+    config: cfg,
+    dir: storeOf(dir),
+    persist: true,
+    nightShiftLog: cfg.engine.nightShift.enabled
+      ? new NightShiftLog({ dir: join(dir, 'night-shift'), timeZone: cfg.engine.nightShift.timezone })
+      : null,
+  });
   const summary = await project.engine.runUntil({});
   project.saveState();
   const { report, markdown } = await buildReport(project, project.engine, { withNarrative: true });
@@ -89,13 +101,14 @@ function usage() {
 
 用法:
   node bin/cowork.js init [dir]          初始化项目配置模板
-  node bin/cowork.js run [dir]           运行协作流程并生成报告
+  node bin/cowork.js run [dir] [--night] 运行协作流程并生成报告（--night 强制夜班静默模式）
   node bin/cowork.js status [dir]        查看任务/状态概览
   node bin/cowork.js report [dir]        生成并打印汇报（读历史状态）
   node bin/cowork.js artifacts [dir]     列出全部产物版本
 
 示例:
-  node bin/cowork.js run examples/demo`);
+  node bin/cowork.js run examples/demo
+  node bin/cowork.js run examples/demo --night   # 夜班模式：问题自动开会讨论并写 night-shift/ 文档`);
 }
 
 const TEMPLATE = `// CoWork 项目配置模板

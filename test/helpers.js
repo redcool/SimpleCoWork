@@ -4,7 +4,13 @@ import { createProject } from '../src/index.js';
 
 export function makeProject(rawConfig, opts = {}) {
   const cfg = assertConfig(normalizeConfig(rawConfig));
-  return createProject({ config: cfg, dir: opts.dir ?? null, persist: opts.persist ?? false });
+  return createProject({
+    config: cfg,
+    dir: opts.dir ?? null,
+    persist: opts.persist ?? false,
+    clock: opts.clock,
+    nightShiftLog: opts.nightShiftLog,
+  });
 }
 
 /** 默认规则集：要求 src/api.js 包含 "OK"（high） */

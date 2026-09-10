@@ -1,14 +1,5 @@
 // 汇报生成：项目快照（进度/风险/下一步）+ 叙事总结（Manager agent 可选）+ Markdown 渲染
-import { parseModelOutput } from './runner.js';
-
-/** 宽松解析：非 JSON 或不合法时返回 null（不抛出） */
-function parseOutputLoose(text) {
-  try {
-    return parseModelOutput(text, { rawActions: true });
-  } catch {
-    return null;
-  }
-}
+import { parseOutputLoose } from './runner.js';
 
 export function buildReportSnapshot(project, engine) {
   const tasks = engine.tasks.list();

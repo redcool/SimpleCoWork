@@ -1,11 +1,12 @@
-// 工作流引擎：依赖调度（异步并发）、质量门（Oracle + Reviewer + 重试 + 会议升级）、事件
+// 工作流引擎：依赖调度（异步并发）、质量门（Oracle + Reviewer + 重试 + 会议升级）、夜班静默模式
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { evaluateRules, verdictFor } from './oracle.js';
-import { buildPrompt, parseModelOutput, applyActions, formatInput, truncate } from './runner.js';
+import { buildPrompt, parseModelOutput, parseOutputLoose, applyActions, formatInput, truncate } from './runner.js';
+import { isInNightShift } from './nightshift.js';
 
 export class WorkflowEngine {
-  constructor({ config, bus, store, agentRegistry, providerRegistry, artifactStore, taskStore, reviewStore, meetingStore }) {
+  constructor({ config, bus, store, agentRegistry, providerRegistry, artifactStore, taskStore, reviewStore, meetingStore, clock = () => new Date(), nightShiftLog = null }) {
     this.config = config;
     this.bus = bus;
     this.store = store;
@@ -16,8 +17,13 @@ export class WorkflowEngine {
     this.reviews = reviewStore;
     this.meetings = meetingStore;
     this.engineOpts = config.engine;
+    this.clock = clock;
+    this.nightShiftLog = nightShiftLog;
     this.running = 0;
+    this.#inflight = new Set(); // 进行中的会议决策（防止 runUntil 提前判停）
   }
+
+  #inflight = new Set();
 
   // ---------- 主循环 ----------
 
@@ -36,7 +42,14 @@ export class WorkflowEngine {
         && this.tasks.list({ state: 'submitted' }).length === 0
         && this.tasks.list({ state: 'ready' }).length === 0
         && this.running === 0;
-      if (idleNow && this.tasks.version === lastVersion) break;
+      if (idleNow) {
+        // 先等待进行中的会议决策落定（夜班多角色讨论可能在微任务链路上尚未完成）
+        if (this.#inflight.size > 0) {
+          await Promise.allSettled([...this.#inflight]);
+          continue;
+        }
+        if (this.tasks.version === lastVersion) break;
+      }
       lastVersion = this.tasks.version;
     }
     return this.summary();
@@ -211,13 +224,13 @@ export class WorkflowEngine {
       task.meta.pendingMeetingId = meeting.id;
       this.tasks.transition(task.id, 'waiting', { meetingId: meeting.id });
       this.bus.emit('meeting.decision_requested', { id: task.id, meetingId: meeting.id });
-      void this.#decideMeeting(meeting, task).catch((err) => {
+      this.#trackInflight(this.#decideMeeting(meeting, task).catch((err) => {
         this.meetings.escalate(meeting.id, `自动决策失败: ${err.message}`);
         task.meta.humanBlocked = true;
         task.lastError = `会议 ${meeting.id} 待人工决策（自动决策失败: ${err.message}）`;
-        this.tasks.transition(task.id, 'failed', { lastError: task.lastError });
+        if (task.state === 'waiting') this.tasks.transition(task.id, 'failed', { lastError: task.lastError });
         this.bus.emit('task.blocked_human', { id: task.id, meetingId: meeting.id });
-      });
+      }));
       return;
     }
     // 未超上限：自动重试
@@ -225,8 +238,14 @@ export class WorkflowEngine {
     this.bus.emit('task.needs_revision', { id: task.id, attempt: attempts, issues });
   }
 
-  /** 会议决策（等待态任务）：autoDecide 时由 manager/meeting 角色生成决策与补救 actions */
+  // ---------- 会议决策（白天单决策者 / 夜班多角色讨论） ----------
+
+  /** 会议决策入口：夜班走多角色讨论 + 夜班文档；白天按 autoDecide 或人工 */
   async #decideMeeting(meeting, task) {
+    if (this.#isNightShift()) {
+      await this.#nightMeeting(meeting, task);
+      return;
+    }
     if (!this.engineOpts.meeting.autoDecide) {
       this.meetings.escalate(meeting.id, '未开启自动决策，需要人工处理');
       task.meta.humanBlocked = true;
@@ -235,8 +254,8 @@ export class WorkflowEngine {
       this.bus.emit('task.blocked_human', { id: task.id, meetingId: meeting.id });
       return;
     }
-    const decider = this.agents.byRole('manager')[0] ?? this.agents.byRole('meeting')[0];
-    if (!decider) {
+    const decided = await this.#askManagerDecision(meeting, task);
+    if (!decided) {
       this.meetings.escalate(meeting.id, '未配置可决策的 agent（manager/meeting 角色）');
       task.meta.humanBlocked = true;
       task.lastError = `会议 ${meeting.id} 待人工决策（无决策 agent）`;
@@ -244,6 +263,59 @@ export class WorkflowEngine {
       this.bus.emit('task.blocked_human', { id: task.id, meetingId: meeting.id });
       return;
     }
+    this.meetings.recordDecision({ meetingId: meeting.id, ...decided });
+    task.escalations += 1;
+    task.meta.pendingDecisionId = meeting.id;
+    this.tasks.transition(task.id, 'needs_revision');
+    this.bus.emit('task.decided_retry', { id: task.id, meetingId: meeting.id, escalations: task.escalations });
+  }
+
+  /** 夜班会议：多角色依次发言 → 主持人归纳决策 → 形成夜班文档 */
+  async #nightMeeting(meeting, task) {
+    const problem = [meeting.reason];
+    const analysis = [];
+    const panel = this.#discussionPanel(task);
+    for (const agent of panel) {
+      try {
+        const opinion = await this.#askOpinion(agent, meeting, task);
+        analysis.push(`${agent.title || agent.role}（${agent.id}）：${opinion}`);
+      } catch (err) {
+        analysis.push(`${agent.id}：发言失败（${err.message}）`);
+      }
+    }
+    meeting.discussion = [...analysis];
+
+    const chair = panel.find((a) => a.role === 'manager') ?? panel[panel.length - 1] ?? null;
+    let decided = null;
+    if (chair) {
+      try {
+        decided = await this.#askChairDecision(meeting, task, chair, analysis);
+      } catch (err) {
+        decided = null;
+      }
+    }
+    if (decided) {
+      this.meetings.recordDecision({ meetingId: meeting.id, ...decided });
+      this.#logNight(meeting, problem, analysis, decided);
+      task.escalations += 1;
+      task.meta.pendingDecisionId = meeting.id;
+      this.tasks.transition(task.id, 'needs_revision');
+      this.bus.emit('meeting.decided', { id: meeting.id, decision: this.meetings.get(meeting.id).decision, night: true });
+      this.bus.emit('task.decided_retry', { id: task.id, meetingId: meeting.id, escalations: task.escalations, night: true });
+      return;
+    }
+    this.#logNight(meeting, problem, analysis, null);
+    this.meetings.escalate(meeting.id, '夜班会议未能形成决策，升级待人工复核');
+    task.meta.humanBlocked = true;
+    task.lastError = `夜班会议 ${meeting.id} 未能形成决策，待人工复核`;
+    this.tasks.transition(task.id, 'failed', { lastError: task.lastError });
+    this.bus.emit('task.blocked_human', { id: task.id, meetingId: meeting.id, night: true });
+  }
+
+  /** 白天/共同决策：单个 manager（或 meeting 角色）输出决策与分工 actions */
+  async #askManagerDecision(meeting, task) {
+    const decider = this.agents.byRole('manager')[0] ?? this.agents.byRole('meeting')[0];
+    if (!decider) return null;
     const provider = this.providers.get(decider.provider);
     const refs = (meeting.contextRefs ?? [])
       .filter((id) => this.artifacts.has(id))
@@ -269,18 +341,114 @@ export class WorkflowEngine {
     const actions = Array.isArray(parsed.actions)
       ? parsed.actions.filter((a) => a && typeof a.taskId === 'string' && typeof a.instruction === 'string')
       : [];
-    this.meetings.recordDecision({
-      meetingId: meeting.id,
+    return {
       decision: parsed.summary || parsed.text || '会议作出决策',
       reason: parsed.text,
       decidedBy: decider.id,
       actions,
+    };
+  }
+
+  /** 夜班讨论参与者：架构师、生产者、审核者、协调者（去重、按启用过滤） */
+  #discussionPanel(task) {
+    const panel = [];
+    const seen = new Set();
+    const want = [];
+    for (const role of ['architect', 'reviewer', 'manager']) {
+      const agent = this.agents.byRole(role)[0];
+      if (agent && !seen.has(agent.id)) {
+        seen.add(agent.id);
+        panel.push(agent);
+      }
+    }
+    if (this.agents.has(task.agentId)) {
+      const producer = this.agents.get(task.agentId);
+      if (!seen.has(producer.id)) panel.push(producer);
+    }
+    return panel;
+  }
+
+  /** 某角色发言（夜班分析过程） */
+  async #askOpinion(agent, meeting, task) {
+    const provider = this.providers.get(agent.provider);
+    const user = [
+      `# 夜班会议：${meeting.subject}`,
+      `问题：${meeting.reason}`,
+      `你是项目里的"${agent.title || agent.role}"，请从你的角色视角分析问题并给出解决方案建议（简要、可执行）。`,
+      '输出严格 JSON（不得输出其它解释）：{"summary":"你的观点与建议","text":"详细分析","actions":[],"knownIssues":[],"done":true}',
+    ].join('\n');
+    const raw = await provider.generate({
+      system: agent.prompt,
+      user,
+      model: agent.model,
+      role: agent.role,
+      mode: 'discuss',
+      task: { id: task.id, name: task.name },
     });
-    // 决策之后：安排补救执行（waiting -> needs_revision -> ready）
-    task.escalations += 1;
-    task.meta.pendingDecisionId = meeting.id;
-    this.tasks.transition(task.id, 'needs_revision');
-    this.bus.emit('task.decided_retry', { id: task.id, meetingId: meeting.id, escalations: task.escalations });
+    const parsed = parseOutputLoose(raw);
+    return (parsed?.text || parsed?.summary || raw).trim();
+  }
+
+  /** 主持人归纳（夜班决定） */
+  async #askChairDecision(meeting, task, chair, analysis) {
+    const provider = this.providers.get(chair.provider);
+    const refs = (meeting.contextRefs ?? [])
+      .filter((id) => this.artifacts.has(id))
+      .map((id) => this.artifacts.get(id));
+    const user = [
+      `# 夜班会议决策：${meeting.subject}`,
+      `问题：${meeting.reason}`,
+      '',
+      '## 参会者分析',
+      ...analysis.map((a) => `- ${a}`),
+      '',
+      '## 相关产物（只读）',
+      ...refs.map((a) => formatInput(a, { maxText: 3000, maxFile: 2000 })),
+      '',
+      '请作为会议主持人输出严格 JSON（不得输出其它解释），归纳出"最佳解决方案"并分工：',
+      '{"summary":"决策结论","text":"给出这样决策的理由","actions":[{"taskId":"任务ID","instruction":"补救指令"}],"knownIssues":[],"done":true}',
+      '- actions 每项必须含 taskId 与 instruction，用于分工解决。',
+    ].join('\n');
+    const raw = await provider.generate({
+      system: chair.prompt,
+      user,
+      model: chair.model,
+      role: 'decision',
+      mode: 'discuss',
+      task: { id: task.id, name: task.name },
+    });
+    const parsed = parseModelOutput(raw, { rawActions: true });
+    const actions = Array.isArray(parsed.actions)
+      ? parsed.actions.filter((a) => a && typeof a.taskId === 'string' && typeof a.instruction === 'string')
+      : [];
+    if (!parsed.summary && !parsed.text) return null;
+    return {
+      decision: parsed.summary || parsed.text || '会议作出决策',
+      reason: parsed.text,
+      decidedBy: chair.id,
+      actions,
+    };
+  }
+
+  /** 夜班文档：问题 / 分析过程 / 决定（写入 NightShiftLog） */
+  #logNight(meeting, problem, analysis, decided) {
+    if (!this.nightShiftLog) return;
+    this.nightShiftLog.add({
+      date: this.clock(),
+      kind: decided ? 'decision' : 'issue',
+      title: meeting.subject,
+      problem,
+      analysis,
+      decision: decided?.decision ?? '',
+      decisionsBy: decided?.decidedBy ?? '',
+      actions: decided?.actions ?? [],
+    });
+  }
+
+  /** 当前是否处于夜班静默时段（时钟可注入，便于测试） */
+  #isNightShift() {
+    const ns = this.engineOpts.nightShift;
+    return !!ns?.enabled && isInNightShift(ns.ranges ?? [], this.clock(), ns.timezone ?? 'UTC');
   }
 
   /** 审核者 agent 运行：阅读产物 + 质量门数据，输出 PASS/FAIL */
@@ -312,6 +480,15 @@ export class WorkflowEngine {
   }
 
   // ---------- 工具 ----------
+
+  /** 跟踪进行中的会议决策 promise（内部已吞掉拒绝，这里只负责登记/清理） */
+  #trackInflight(promise) {
+    this.#inflight.add(promise);
+    promise.then(
+      () => this.#inflight.delete(promise),
+      () => this.#inflight.delete(promise),
+    );
+  }
 
   #approve(task, artifact) {
     this.tasks.transition(task.id, 'approved');
@@ -385,6 +562,7 @@ export class WorkflowEngine {
       submitted: byState('submitted').length,
       needsRevision: byState('needs_revision').length,
       waiting: byState('waiting').length,
+      nightShift: this.#isNightShift(),
       needsHuman: blocked.map((t) => ({ id: t.id, taskName: t.name, reason: t.lastError ?? '等待会议决策/人工处理' })),
       tasks: tasks.map((t) => ({
         id: t.id, name: t.name, state: t.state, agentId: t.agentId,

@@ -169,3 +169,12 @@ function tryParseBalanced(s) {
 function normalizePath(p) {
   return String(p).replace(/\\/g, '/').replace(/^\/+/, '');
 }
+
+/** 宽松解析（叙事/发言等场景）：非 JSON 或结构非法时返回 null，不抛出 */
+export function parseOutputLoose(text) {
+  try {
+    return parseModelOutput(text, { rawActions: true });
+  } catch {
+    return null;
+  }
+}

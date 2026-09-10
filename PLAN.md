@@ -81,3 +81,29 @@
 3. 架构一致性检查 ✅ 由 oracle + 架构规则产物提供，P1/P3/P6 验证
 4. 冲突时开会、讨论、分工解决 ✅ 由 meeting 触发器 + 决策 actions 提供，P4/P6 验证
 5. 全程离线可跑、可测试 ✅ 由 mock provider + node:test 提供，P7 验证（50/50 ✅）
+
+## 六、二阶段计划（P8-P12：agns 模型 / 夜班静默 / Web UI / 规划器）
+
+> 目标升级：CoWork 从"流水线执行器"升级为**可被各类 agent coder（如 dsh）嵌入的规划型协作引擎**——
+> 用户给一个主题 → agents 分析拆解成模块计划 → 开发/测试/验证 → 交付验收。
+> 语言决策：**ESM JavaScript 零依赖运行**（理由见 README「技术决策」），文档型护 JSDoc + 可选 tsc --noEmit。
+
+### P8 agens 模型接入 ⬜
+- 交付：agens 接入说明与示例（`providers.agnes = {kind:'openai', baseURL:'https://apihub.agnes-ai.com/v1', apiKey: env.AGNES_API_KEY, defaultModel:'agnes-2.5-flash'}`）、demo 切换示例、README/REVIEW 更新
+- 验收：配置可通过校验；单测验证 provider 构造；文档给出 agnes-2.5-flash（免费）与 agnes-3.0-flash 用法
+
+### P9 夜班静默模式 ⬜
+- 交付：`src/nightshift.js`（时间段判定[跨天/时区]、夜班日志渲染）、引擎多角色会议（架构/开发/审核/协调各发言→归纳决策）、`night-shift/YYYY-MM-DD.md`（问题/分析过程/决定）、时钟注入、CLI `run --night`
+- 验收：单测（边界/跨天/时区）+ 集成（夜班遇问题自动开会不阻塞、文档生成、白天仍阻塞人工）全绿
+
+### P10 Web UI（零依赖）⬜
+- 交付：`cowork serve <dir>` → node:http 面板：总览/任务/产物/会议/报告/夜班记录 + 人工审批入口（escalated 会议审批并写回决策）
+- 验收：页面可浏览全部状态；审批后状态更新并可重新 run 推进
+
+### P11 规划器（主题→模块→计划→执行→交付）⬜
+- 交付：`cowork plan <dir> "主题"`：agents(架构/规划) 拆解模块 → 生成任务 DAG（依赖/角色/验收/规则）→ 追加工作流 → 执行/质量门/测试 → 交付验收报告
+- 验收：集成测试：给主题→自动产出计划并跑通→报告含"可交付性"结论
+
+### P12 整体测试与审核（二阶段）⬜
+- 交付：全量 `node --test` 通过、REVIEW.md 增补、CLI 端到端实跑（含 --night、serve、plan）
+- 验收：新增全部测试绿；人工验收清单更新

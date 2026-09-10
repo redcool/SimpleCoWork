@@ -16,9 +16,17 @@ export default {
     mock: {
       kind: 'mock',
       script: {
-        // 架构师：产出架构文档 + 可机检规则 rules.json
-        architect: async () => ({
-          summary: '完成分层架构设计并形式化 4 条可机检规则',
+        // 架构师：产出架构文档 + 可机检规则 rules.json；夜班讨论时给出规则视角意见
+        architect: async (ctx) => {
+          if (ctx.mode === 'discuss') {
+            return {
+              summary: '按架构规则复核：R1（module.exports）与 R2（无 TODO）未满足，修复方向是补齐导出并清理 TODO。',
+              text: '架构规则是本项目的验收底线。当前实现违反 R1/R2，建议开发者按 rules.json 逐条修复并重跑质量门。',
+              actions: [], knownIssues: [], done: true,
+            };
+          }
+          return {
+            summary: '完成分层架构设计并形式化 4 条可机检规则',
           text: '# Demo App 架构\n\n- 分层：api 与 db 分离\n- api 模块必须导出 module.exports\n- api.js 不允许遗留 TODO\n- 数据层文件 src/db.js 必须存在\n- 代码必须语法合法',
           actions: [
             {
@@ -41,10 +49,18 @@ export default {
           ],
           knownIssues: [],
           done: true,
-        }),
+        };
+        },
 
-        // 开发者：按任务分派；t-dev-api 第一版故意违规以演示质量门与会议
+        // 开发者：按任务分派；t-dev-api 第一版故意违规以演示质量门与会议；夜班讨论给出修复承诺
         developer: async (ctx) => {
+          if (ctx.mode === 'discuss') {
+            return {
+              summary: '承认违规并给出修复方案：补上 module.exports、清除 TODO，重新提交 src/api.js。',
+              text: '第一版遗留 TODO 且未导出 module.exports，违反了 R1/R2。修复计划：提供完整实现并去掉 TODO 注释，然后重跑质量门与审核。',
+              actions: [], knownIssues: [], done: true,
+            };
+          }
           if (ctx.task?.id === 't-dev-api') {
             const attempt = ctx.attempt ?? 1;
             if (attempt === 1) {
@@ -94,8 +110,15 @@ export default {
           return { summary: '未知开发任务', text: '', actions: [], knownIssues: ['未知任务'], done: false };
         },
 
-        // 审核者：依据质量门数据判定（与引擎内置一致性检查一致，保证可复现）
+        // 审核者：依据质量门数据判定（与引擎内置一致性检查一致，保证可复现）；夜班讨论给出核验意见
         reviewer: async (ctx) => {
+          if (ctx.mode === 'discuss') {
+            return {
+              summary: '须按质量门独立复核：确认修复后可放行，但重申不得只信开发者自述。',
+              text: '审核立场：以 Oracle 规则与自动化校验为准。当前问题由高严重性规则触发，开发者修复后必须重跑规则与语法校验，通过后才 approve。',
+              actions: [], issues: [], done: true,
+            };
+          }
           const checks = ctx.gate?.checks ?? [];
           const highFail = checks.filter((c) => c.applicable !== false && c.severity === 'high' && !c.passed);
           if (highFail.length > 0) {
@@ -117,8 +140,15 @@ export default {
           };
         },
 
-        // 协调者：汇报任务 + 叙事生成
+        // 协调者：汇报任务 + 叙事生成 + 夜班讨论意见
         manager: async (ctx) => {
+          if (ctx.mode === 'discuss') {
+            return {
+              summary: '协调视角：会议共识是让 t-dev-api 按架构规则修复后重新提交，我来跟进并记录夜班文档。',
+              text: '建议立即修复 R1/R2 违规项，修复后重跑质量门；本夜班文档会后写入 night-shift/。',
+              actions: [], knownIssues: [], done: true,
+            };
+          }
           if (ctx.task?.id === 't-report') {
             const lines = (ctx.inputs ?? []).map((a) => `- ${a.id}（${a.state}）— ${a.summary}`);
             return {
@@ -221,6 +251,14 @@ export default {
     maxEscalations: 1,
     agentTimeoutMs: 30000,
     commandTimeoutMs: 30000,
-    meeting: { autoDecide: true }, // 演示自动会议决策
+    meeting: { autoDecide: true }, // 演示自动会议决策（白天）
+    // 夜班静默模式：enabled=true 时，夜班时段内（22:00-08:30 跨天，Asia/Shanghai）遇问题不阻塞人工，
+    // agents 自动开会多角色讨论 → 归纳决策 → 写入 <项目目录>/night-shift/YYYY-MM-DD.md（问题/分析过程/决定）
+    // 手动体验：node bin/cowork.js run examples/demo --night（无需改配置，强制夜班）
+    nightShift: {
+      enabled: false,
+      timezone: 'Asia/Shanghai',
+      ranges: [{ start: '22:00', end: '08:30' }],
+    },
   },
 };
