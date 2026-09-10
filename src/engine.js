@@ -527,15 +527,16 @@ export class WorkflowEngine {
   }
 
   #collectRules() {
+    const fromConfig = this.config.workflow?.rules ?? [];
     const arch = this.artifacts.latestApproved('architecture');
-    if (!arch) return [];
+    if (!arch) return [...fromConfig];
     const rulesFile = arch.files.find((f) => f.path === 'rules.json');
-    if (!rulesFile) return [];
+    if (!rulesFile) return [...fromConfig];
     try {
       const data = JSON.parse(rulesFile.content);
-      return Array.isArray(data.rules) ? data.rules : [];
+      return [...fromConfig, ...(Array.isArray(data.rules) ? data.rules : [])];
     } catch {
-      return [];
+      return [...fromConfig];
     }
   }
 

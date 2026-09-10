@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 // CoWork CLI：init / run（--night/--resume）/ serve / status / report / artifacts
 import { resolve, join } from 'node:path';
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { loadConfig } from '../src/config.js';
-import { createProject, NightShiftLog, startPanelServer } from '../src/index.js';
+import { createProject, NightShiftLog, startPanelServer, runPlanner, normalizePlanTasks, slugOf } from '../src/index.js';
 import { buildReport } from '../src/reporter.js';
 
 const [, , cmd, arg] = process.argv;
+const planArg = () => process.argv.find((a) => a.startsWith('--plan='))?.slice('--plan='.length) ?? null;
 
 const dirOf = (p) => resolve(process.cwd(), p ?? '.');
 const storeOf = (p) => join(p, '.cowork');
@@ -17,6 +18,7 @@ async function main() {
       case 'init': initProject(arg); break;
       case 'run': await runProject(arg); break;
       case 'serve': await servePanel(arg); break;
+      case 'plan': await planProject(arg); break;
       case 'status': await readOnly(arg, async (project) => {
         for (const t of project.taskStore.list()) {
           const line = `- ${t.id}\t${t.state.padEnd(14)}\t尝试${t.attempts}/升级${t.escalations}\t${t.name}`;
@@ -54,6 +56,13 @@ function initProject(p) {
 async function runProject(p) {
   const dir = dirOf(p ?? '.');
   const cfg = await loadConfig(join(dir, 'cowork.config.js'));
+  // --plan=<file>：载入用户主题生成的计划（模块任务 DAG + 架构规则），替换 workflow
+  const planFile = planArg();
+  if (planFile) {
+    const plan = JSON.parse(readFileSync(join(dir, planFile), 'utf8'));
+    cfg.workflow.tasks = Array.isArray(plan.tasks) && plan.tasks.length ? plan.tasks : normalizePlanTasks(plan, cfg);
+    cfg.workflow.rules = Array.isArray(plan.rules) ? plan.rules : [];
+  }
   // --night：强制进入夜班静默模式（enabled + 覆盖全天时段，时间判定恒真）
   if (process.argv.includes('--night')) {
     cfg.engine.nightShift.enabled = true;
@@ -95,6 +104,23 @@ async function runProject(p) {
   }
 }
 
+async function planProject(p) {
+  const dir = dirOf(p ?? '.');
+  // 用法: cowork plan <dir> "主题" → 主题从 argv[4] 起（argv[3] 是目录）
+  const theme = process.argv.slice(4).filter((a) => !a.startsWith('--')).join(' ').trim();
+  const cfg = await loadConfig(join(dir, 'cowork.config.js'));
+  const project = createProject({ config: cfg, dir: null, persist: false });
+  const { plan, markdown, files } = await runPlanner(project, {
+    theme,
+    role: 'planner',
+    outDir: join(dir, 'plan'),
+  });
+  console.log(markdown);
+  console.log(`\n✔ 计划已生成：${files.join(', ')}`);
+  console.log(`执行：node bin/cowork.js run <dir> --plan=plan/${slugOf(plan.theme)}/plan.json`);
+  if (Array.isArray(plan.tasks)) console.log(`共 ${plan.tasks.length} 个模块任务，${(plan.rules ?? []).length} 条架构规则。`);
+}
+
 async function servePanel(p) {
   const dir = dirOf(p ?? '.');
   if (!existsSync(join(storeOf(dir), 'state.json'))) {
@@ -120,9 +146,11 @@ function usage() {
 
 用法:
   node bin/cowork.js init [dir]                    初始化项目配置模板
-  node bin/cowork.js run [dir] [--night] [--resume] 运行协作流程并生成报告
+  node bin/cowork.js plan <dir> "主题"             让 agents 拆解主题为模块任务 DAG（plan/<slug>/plan.json）
+  node bin/cowork.js run [dir] [--night] [--resume] [--plan=文件] 运行协作流程并生成报告
                                                     --night  强制夜班静默模式（问题自动开会+写文档）
                                                     --resume 从 .cowork/state.json 恢复续跑（人工审批后使用）
+                                                    --plan=plan/<slug>/plan.json  按计划执行（主题→开发→验收）
   node bin/cowork.js serve [dir] [--port=N]        启动 Web 面板（任务/产物/会议审批/夜班文档）
   node bin/cowork.js status [dir]                  查看任务/状态概览
   node bin/cowork.js report [dir]                  生成并打印汇报（读历史状态）
@@ -131,6 +159,8 @@ function usage() {
 示例:
   node bin/cowork.js run examples/demo
   node bin/cowork.js run examples/demo --night     # 夜班模式：问题自动开会讨论并写 night-shift/ 文档
+  node bin/cowork.js plan examples/demo "做一个天气查询网站"   # 生成计划
+  node bin/cowork.js run examples/demo --plan=plan/做一个天气查询网站/plan.json  # 执行计划
   node bin/cowork.js serve examples/demo           # 打开 http://127.0.0.1:8765 审批 / 查看夜班记录`);
 }
 

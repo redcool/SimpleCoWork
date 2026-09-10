@@ -24,6 +24,7 @@ export { parseModelOutput, buildPrompt, applyActions, formatInput, truncate, par
 export { runCommand } from './exec.js';
 export { NightShiftLog, isInNightShift, rangeCovers, toMinutes, minutesInZone, dateKey } from './nightshift.js';
 export { createPanelServer, startPanelServer, buildStateView, applyDecision } from './web/server.js';
+export { runPlanner, normalizePlanTasks, renderPlanMarkdown, slugOf } from './planner.js';
 export {
   normalizeConfig, validateConfig, assertConfig, loadConfig, findCycle,
   DEFAULT_PROMPTS, ROLES, RISKS, defaultEngine,

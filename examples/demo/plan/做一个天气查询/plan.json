@@ -1,0 +1,122 @@
+{
+  "theme": "做一个天气查询",
+  "summary": "围绕「示例主题」拆解为核心与界面两个模块，核心先行。",
+  "text": "模块拆解：m-core（核心逻辑，无依赖）、m-ui（界面，依赖核心）。",
+  "plannerAgent": "architect",
+  "generatedAt": "2026-09-10T09:33:11.728Z",
+  "modules": [
+    {
+      "id": "m-core",
+      "name": "核心模块",
+      "role": "developer",
+      "requires": [],
+      "outputs": [
+        "core"
+      ],
+      "acceptance": [
+        {
+          "id": "C1",
+          "severity": "high",
+          "type": "contains",
+          "file": "src/core.js",
+          "text": "module.exports",
+          "ifPresent": true
+        },
+        {
+          "id": "C2",
+          "severity": "medium",
+          "type": "file_exists",
+          "file": "src/core.js",
+          "description": "核心文件必须存在"
+        }
+      ]
+    },
+    {
+      "id": "m-ui",
+      "name": "界面模块",
+      "role": "developer",
+      "requires": [
+        "m-core"
+      ],
+      "outputs": [
+        "ui"
+      ],
+      "acceptance": [
+        {
+          "id": "U1",
+          "severity": "high",
+          "type": "contains",
+          "file": "src/ui.js",
+          "text": "render",
+          "ifPresent": true
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "id": "G1",
+      "severity": "high",
+      "type": "not_contains",
+      "file": "src/core.js",
+      "text": "TODO",
+      "ifPresent": true,
+      "description": "核心产物不得遗留 TODO"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "m-core",
+      "name": "核心模块",
+      "agentId": "dev",
+      "requires": [],
+      "inputs": [],
+      "outputs": [
+        "core"
+      ],
+      "risk": "medium",
+      "verify": [
+        {
+          "id": "C1",
+          "severity": "high",
+          "type": "contains",
+          "file": "src/core.js",
+          "text": "module.exports",
+          "ifPresent": true
+        },
+        {
+          "id": "C2",
+          "severity": "medium",
+          "type": "file_exists",
+          "file": "src/core.js",
+          "description": "核心文件必须存在"
+        }
+      ]
+    },
+    {
+      "id": "m-ui",
+      "name": "界面模块",
+      "agentId": "dev",
+      "requires": [
+        "m-core"
+      ],
+      "inputs": [
+        "core"
+      ],
+      "outputs": [
+        "ui"
+      ],
+      "risk": "medium",
+      "verify": [
+        {
+          "id": "U1",
+          "severity": "high",
+          "type": "contains",
+          "file": "src/ui.js",
+          "text": "render",
+          "ifPresent": true
+        }
+      ]
+    }
+  ]
+}

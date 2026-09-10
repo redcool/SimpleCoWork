@@ -52,6 +52,34 @@ export default {
         };
         },
 
+        // 规划师：把用户主题拆解为模块任务 DAG（演示用 mock：固定拆两个模块）
+        planner: async (ctx) => {
+          const theme = (ctx.user ?? '').split('\n')[0].replace(/^# 项目主题\s*/, '').trim() || '示例主题';
+          return {
+            summary: `围绕「${theme}」拆解为核心与界面两个模块，核心先行。`,
+            text: `模块拆解：m-core（核心逻辑，无依赖）、m-ui（界面，依赖核心）。`,
+            modules: [
+              {
+                id: 'm-core', name: '核心模块', role: 'developer', requires: [], outputs: ['core'],
+                acceptance: [
+                  { id: 'C1', severity: 'high', type: 'contains', file: 'src/core.js', text: 'module.exports', ifPresent: true },
+                  { id: 'C2', severity: 'medium', type: 'file_exists', file: 'src/core.js', description: '核心文件必须存在' },
+                ],
+              },
+              {
+                id: 'm-ui', name: '界面模块', role: 'developer', requires: ['m-core'], outputs: ['ui'],
+                acceptance: [
+                  { id: 'U1', severity: 'high', type: 'contains', file: 'src/ui.js', text: 'render', ifPresent: true },
+                ],
+              },
+            ],
+            rules: [
+              { id: 'G1', severity: 'high', type: 'not_contains', file: 'src/core.js', text: 'TODO', ifPresent: true, description: '核心产物不得遗留 TODO' },
+            ],
+            actions: [], knownIssues: [], done: true,
+          };
+        },
+
         // 开发者：按任务分派；t-dev-api 第一版故意违规以演示质量门与会议；夜班讨论给出修复承诺
         developer: async (ctx) => {
           if (ctx.mode === 'discuss') {
@@ -106,6 +134,13 @@ export default {
               knownIssues: [],
               done: true,
             };
+          }
+          if (ctx.task?.id === 'm-core' || ctx.task?.id === 'm-ui') {
+            const file = ctx.task.id === 'm-ui' ? 'src/ui.js' : 'src/core.js';
+            const content = ctx.task.id === 'm-ui'
+              ? 'const ui = { render: () => "hello" };\nmodule.exports = ui;\n'
+              : 'const core = { run: () => "ok" };\nmodule.exports = core;\n';
+            return { summary: `实现 ${ctx.task.id}`, text: '模块实现。', actions: [{ type: 'write', path: file, content }], knownIssues: [], done: true };
           }
           return { summary: '未知开发任务', text: '', actions: [], knownIssues: ['未知任务'], done: false };
         },

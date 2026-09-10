@@ -3,11 +3,12 @@ import { pathToFileURL } from 'node:url';
 import { isAbsolute, resolve as resolvePath } from 'node:path';
 import { existsSync } from 'node:fs';
 
-export const ROLES = new Set(['architect', 'developer', 'reviewer', 'manager', 'meeting']);
+export const ROLES = new Set(['architect', 'planner', 'developer', 'reviewer', 'manager', 'meeting']);
 export const RISKS = new Set(['low', 'medium', 'high']);
 
 export const DEFAULT_PROMPTS = {
   architect: '你是资深软件架构师：负责设计清晰的分层架构，并把架构约束形式化为可机检规则。',
+  planner: '你是产品与技术规划师：把用户主题拆解为可独立开发验证的模块任务 DAG，并给出跨模块架构规则。',
   developer: '你是资深开发者：严格依据输入产物实现代码，遵循架构约束，输出完整可用的文件。',
   reviewer: '你是严格的项目审核者：独立核实产物是否满足验收标准与架构约束，不轻信开发者的自述。',
   manager: '你是项目协调者：负责跟进整体进度、识别风险、产出决策与汇报。',
@@ -56,6 +57,7 @@ export function normalizeConfig(input = {}) {
         acceptance: [],
         ...t,
       })),
+      rules: cfg.workflow?.rules ?? [],
     },
     engine: {
       ...defaultEngine(),

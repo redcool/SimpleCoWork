@@ -57,8 +57,9 @@ export function truncate(s, n) {
 
 /** 解析模型输出（JSON），容错：```json 围栏 / 首个平衡 JSON 对象
  * opts.rawActions=true 时保留 actions 原样（会议决策等自定义 action 结构）
+ * opts.keepRaw=true 时把原始解析对象挂到返回值的 raw 字段（规划器等需要保留未知字段的场景）
  */
-export function parseModelOutput(text, { rawActions = false } = {}) {
+export function parseModelOutput(text, { rawActions = false, keepRaw = false } = {}) {
   const cleaned = stripFences(String(text ?? '')).trim();
   let obj = null;
   try {
@@ -100,7 +101,9 @@ export function parseModelOutput(text, { rawActions = false } = {}) {
       });
     }
   }
-  return { summary, text: outText, actions, knownIssues, done };
+  const result = { summary, text: outText, actions, knownIssues, done };
+  if (keepRaw) result.raw = obj;
+  return result;
 }
 
 /** 执行动作，返回 { files: [{path,content}], execResults: [] } */
