@@ -66,9 +66,12 @@
 <script>
 const $ = (id) => document.getElementById(id);
 let state = null;
+// 面板会话 token：由启动时打印的 URL 携带（?token=…）；所有 API 请求必须带上（防未授权/跨站请求）
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+const hdr = (extra) => ({ ...(extra ?? {}), 'x-cowork-token': TOKEN });
 
 async function refresh() {
-  const r = await fetch('/api/state');
+  const r = await fetch('/api/state', { headers: hdr() });
   const data = await r.json();
   if (data.error) { $('state').textContent = data.error; $('state').className = 'pill bad'; return; }
   state = data;
@@ -123,7 +126,7 @@ async function submitApproval() {
     reason: $('afReason').value,
     actions,
   };
-  const r = await fetch('/api/decisions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await fetch('/api/decisions', { method: 'POST', headers: hdr({ 'content-type': 'application/json' }), body: JSON.stringify(body) });
   const data = await r.json();
   if (!r.ok) { alert('审批失败：' + (data.error || r.status)); return; }
   closeApproval();
@@ -144,14 +147,14 @@ function renderReviews(reviews) {
 }
 
 async function renderNight() {
-  const r = await fetch('/api/night');
+  const r = await fetch('/api/night', { headers: hdr() });
   const data = await r.json();
   const days = data.days || [];
   $('nightList').innerHTML = days.map((d) => `<button onclick="showNight('${d}')">${d}</button>`).join(' ') || '<span>（暂无夜班记录）</span>';
 }
 
 async function showNight(day) {
-  const r = await fetch('/api/night?day=' + encodeURIComponent(day));
+  const r = await fetch('/api/night?day=' + encodeURIComponent(day), { headers: hdr() });
   const data = await r.json();
   $('nightDoc').textContent = data.markdown || '（无内容）';
   $('nightDoc').classList.remove('hidden');

@@ -1,6 +1,8 @@
 // 项目持久化：JSONL 事件日志 + JSON 快照；persist=false 时纯内存（测试用）
-import { mkdirSync, writeFileSync, readFileSync, existsSync, appendFileSync } from 'node:fs';
+// 安全：saveState 用原子写（tmp+rename），避免崩溃/并发读写半截 state.json
+import { mkdirSync, readFileSync, existsSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { atomicWrite } from './security.js';
 
 export class ProjectStore {
   constructor({ dir = null, persist = true } = {}) {
@@ -26,7 +28,7 @@ export class ProjectStore {
     this.state = state;
     if (this.persist) {
       mkdirSync(this.dir, { recursive: true });
-      writeFileSync(this._stateFile, JSON.stringify(state, null, 2), 'utf8');
+      atomicWrite(this._stateFile, JSON.stringify(state, null, 2));
     }
   }
 

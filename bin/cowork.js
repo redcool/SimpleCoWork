@@ -2,10 +2,13 @@
 // CoWork CLI：init / plan / run（--night/--resume/--plan）/ serve / status / report / artifacts / ship
 import { resolve, join, normalize, relative, isAbsolute } from 'node:path';
 import { existsSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { loadConfig } from '../src/config.js';
 import { createProject, NightShiftLog, startPanelServer, runPlanner, normalizePlanTasks, slugOf } from '../src/index.js';
 import { buildReport } from '../src/reporter.js';
+import { safeJoin } from '../src/security.js';
+import { writeApprovedArtifacts } from '../src/deliver.js';
 
 const [, , cmd, arg] = process.argv;
 const planArg = () => process.argv.find((a) => a.startsWith('--plan='))?.slice('--plan='.length) ?? null;
@@ -77,9 +80,11 @@ async function runProject(p) {
   loadDotEnv(dir);
   const cfg = await loadConfig(join(dir, 'cowork.config.js'));
   // --plan=<file>：载入用户主题生成的计划（模块任务 DAG + 架构规则），替换 workflow
+  // 安全：plan 文件必须位于项目目录内（防外部文件读取）
   const planFile = planArg();
   if (planFile) {
-    const plan = JSON.parse(readFileSync(join(dir, planFile), 'utf8'));
+    const planAbs = safeJoin(dir, planFile); // 越界/绝对路径直接抛错
+    const plan = JSON.parse(readFileSync(planAbs, 'utf8'));
     cfg.workflow.tasks = Array.isArray(plan.tasks) && plan.tasks.length ? plan.tasks : normalizePlanTasks(plan, cfg);
     cfg.workflow.rules = Array.isArray(plan.rules) ? plan.rules : [];
   }
@@ -150,9 +155,10 @@ async function servePanel(p) {
   }
   const portArg = process.argv.find((a) => /^--port=/.test(a));
   const port = portArg ? Number(portArg.split('=')[1]) : 8765;
-  const { url } = await startPanelServer({ projectDir: dir, port, host: '127.0.0.1' });
+  // 安全：随机会话 token，打印在访问 URL 中（浏览器据此带 X-CoWork-Token；跨站无 token 即被拒）
+  const { url } = await startPanelServer({ projectDir: dir, port, host: '127.0.0.1', token: randomBytes(18).toString('base64url') });
   console.log(`CoWork 面板已启动: ${url}`);
-  console.log('（Ctrl+C 停止；审批写回后请执行 node bin/cowork.js run <dir> --resume 续跑）');
+  console.log('（本机访问：直接使用上面的 URL；Ctrl+C 停止；审批写回后请执行 node bin/cowork.js run <dir> --resume 续跑）');
 }
 
 async function readOnly(p, fn) {
@@ -174,20 +180,8 @@ function shipArtifacts(p) {
   const artifacts = (state.artifacts ?? []).filter((a) => a.state === 'approved');
   if (artifacts.length === 0) throw new Error('没有已批准的产物可提交');
 
-  // 校验路径不越界（禁止 .. 逃逸到项目目录外），落到项目目录
-  const written = [];
-  for (const a of artifacts) {
-    for (const f of (a.files ?? [])) {
-      const abs = resolve(dir, f.path);
-      const rel = relative(dir, abs);
-      if (rel.startsWith('..') || isAbsolute(rel)) {
-        throw new Error(`产物 ${a.id} 的文件路径越界: ${f.path}`);
-      }
-      mkdirSync(requireDir(abs), { recursive: true });
-      writeFileSync(abs, String(f.content ?? ''), f.encoding ?? 'utf8');
-      written.push(f.path);
-    }
-  }
+  // 安全写盘：safeJoin 防越界 + 逐级 lstat 防符号链接绕过
+  const { paths: written } = writeApprovedArtifacts(dir, artifacts);
 
   // git 提交（--branch 可指定分支，默认当前分支）
   const rev = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], { stdio: 'ignore' });
@@ -208,8 +202,6 @@ function shipArtifacts(p) {
     console.log('\nℹ 无变更可提交（产物与已提交内容一致），产物已写入工作区。');
     return;
   }
-  const head = spawnSync('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'], { stdio: 'inherit' });
-  void head;
   console.log(`\n✔ 已提交 ${written.length} 个文件（${artifacts.length} 个产物）到 git${branch ? ` 分支 ${branch}` : ''}。`);
   console.log('  提交信息:', msg);
   return { artifacts: artifacts.length, filesWritten: written.length };

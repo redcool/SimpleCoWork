@@ -22,6 +22,10 @@ export function defaultEngine() {
     persistDir: '.cowork',
     agentTimeoutMs: 120000,
     commandTimeoutMs: 60000,
+    // 安全：agent 的可执行命令白名单（首命令匹配）。allowAll:true 恢复"任意命令"旧行为（有风险，不推荐）
+    commands: { allow: ['node', 'npm', 'npx', 'git'], allowAll: false },
+    // 安全：动作资源限制（防 agent 吐超大内容/无限动作）
+    actionLimits: { maxActions: 100, maxWriteBytes: 512 * 1024, maxExec: 20 },
     meeting: { autoDecide: false },
     nightShift: {
       enabled: false,

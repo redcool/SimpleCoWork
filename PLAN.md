@@ -81,6 +81,7 @@
 | 本会话 | P13 | 工作室模式：自定义角色（producer/策划/美术/程序/QA/艺术总监/导演）+ accepts 按产物匹配评审 + min_size/json_valid 资产规则 + exec outFile 回读；game-studio-demo 冲突会议闭环；测试 76/76 | ✅ |
 | 本会话 | P14 | 团队任务（task.team：同角色多 agent 并行产出→互评→择优→整合；策划 2 人团队产出融合 GDD） | ✅ |
 | 本会话 | P15 | 图片规则（file_magic/image_dimensions + latin1 编码）、运行统计（次数/耗时/输出/token）、cowork ship git 分支交付、doc/roles.md、demo 增 writer/audio；测试 79/79 | ✅ |
+| 本会话 | P16 | 安全加固：路径越界/符号链接绕过/命令白名单/面板鉴权+反 CSRF/day 穿越/body 限制/状态原子写/错误脱敏/动作资源限制全部闭环；doc/USAGE.md 接入手册；测试 87+2skip | ✅ |
 
 ## 五、最终验收标准（总）
 
@@ -142,3 +143,22 @@
   4. `doc/roles.md` 角色职责说明书；
   5. demo 增补 writer/audio 角色与任务（7 任务）。
 - 验收：studio.test 增补 3 例（team 校验/team 择优/图片规则）；demo e2e 7/7（团队+会议+统计断言）；**全量 79/79**；CLI 实跑：完整报告含团队标记与运行统计；ship 冒烟（临时 git 仓库 commit 9 文件/7 产物）✅
+
+## 八、P16：安全加固（用户安全审查驱动）
+
+> 用户给出安全优先级清单，逐项闭环；统一安全基元放 `src/security.js`，`security.test.js` 回归覆盖。
+
+- **最高优先级**：
+  1. runner 路径穿越与越界读写 → `safeJoin` 拒绝 `../`/绝对路径/盘符逃逸（write path、exec cwd、outFile 全覆盖）；
+  2. `shell:true` 任意命令执行 → `engine.commands.allow` 白名单（basename 匹配、支持引号路径与 .exe），默认 node/npm/npx/git，`allowAll:true` 才放开；
+  3. Web 审批接口无认证/CSRF → 会话 token（URL 携带，未认证 401）+ Origin 同源校验 + JSON POST 预检拦截；
+  4. `/api/night` 路径穿越 → `DAY_RE` 仅 YYYY-MM-DD（含月/日语义范围）；
+  5. ship 符号链接绕过 → `assertNoSymlink` 逐级 lstat，经 `src/deliver.js` 统一写盘；
+  6. `--plan` 外部文件读取 → `safeJoin(dir, planFile)` 必须项目目录内。
+- **其次**：
+  7. 请求体限制 → POST body ≤ 1MiB 超限 413；
+  8. 状态原子写入/并发 → `atomicWrite`（tmp+rename）用于 state.json 与审批写回；
+  9. 错误脱敏 → Web 500 不回传堆栈/路径（细节只落本机 stderr）；
+  10. 动作资源限制 → `engine.actionLimits`（maxActions/maxWriteBytes/maxExec）。
+- 交付：`src/security.js` / `src/deliver.js`、runner/exec/server/bin/store 改造、`test/security.test.js`（10 例）、`doc/USAGE.md` 接入手册。
+- 验收：**全量 87 通过 + 2 跳过**（symlink 用例因本机无开发者模式跳过）；CLI 冒烟：demo 4/4、game-studio 7/7（exec 白名单放行 node）、`--plan=../../.env` 被拒、serve URL 带 token（无 token 401 / query token 200 / header token 200）✅

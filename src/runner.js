@@ -1,7 +1,9 @@
 // Runner：把"任务 + 输入产物 + agent 人设"组装成提示词；解析模型输出；执行 write/exec 动作
+// 安全边界见 src/security.js：路径越界/符号链接/命令白名单/动作资源限制
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCommand } from './exec.js';
+import { safeJoin, assertNoSymlink } from './security.js';
 
 const OUTPUT_FORMAT = `
 # 输出协议（强制）
@@ -106,25 +108,57 @@ export function parseModelOutput(text, { rawActions = false, keepRaw = false } =
   return result;
 }
 
-/** 执行动作，返回 { files: [{path,content}], execResults: [] } */
-export function applyActions(actions, { workDir = null, commandTimeoutMs = 60000 } = {}) {
+/**
+ * 执行动作，返回 { files: [{path,content}], execResults: [] }
+ * 安全边界：write/exec 路径一律 safeJoin（防 ../ 与绝对路径逃逸）+ assertNoSymlink（防符号链接绕过）；
+ * 动作数量与 write 内容大小受限（limits），exec 命令受命令白名单约束（commandPolicy）。
+ */
+export function applyActions(actions, {
+  workDir = null,
+  commandTimeoutMs = 60000,
+  limits = {},
+  commandPolicy = null,
+} = {}) {
   const files = [];
   const execResults = [];
+  const maxActions = limits.maxActions ?? 100;
+  const maxWriteBytes = limits.maxWriteBytes ?? 512 * 1024;
+  const maxExec = limits.maxExec ?? 20;
+  if (!Array.isArray(actions)) throw new Error('actions 必须是数组');
+  if (actions.length > maxActions) throw new Error(`动作数量超限（${actions.length} > ${maxActions}）`);
+  let execCount = 0;
   for (const action of actions) {
     if (action.type === 'write') {
+      if (String(action.content ?? '').length > maxWriteBytes) {
+        throw new Error(`write 内容超限（${action.path}，${String(action.content).length} 字节 > ${maxWriteBytes}）`);
+      }
+      // 无论是否落盘都做语法级路径校验，防止 ../ 进入产物与后续 ship
+      safeJoin(workDir ?? '.', action.path);
       const enc = action.encoding ?? 'utf8'; // 资产文件（如 PNG 的 latin1 字节串）按声明编码落盘
       files.push({ path: action.path, content: action.content, encoding: enc });
       if (workDir) {
-        const abs = join(workDir, action.path);
+        const abs = assertNoSymlink(workDir, action.path);
         mkdirSync(requireDir(abs), { recursive: true });
         writeFileSync(abs, action.content, enc);
       }
     } else if (action.type === 'exec') {
-      const cwd = action.cwd ? (workDir ? join(workDir, action.cwd) : action.cwd) : workDir;
-      const res = runCommand(action.command, { cwd: cwd ?? undefined, timeoutMs: commandTimeoutMs, expectedExit: action.expectedExit });
-      // 命令产物留档：outFile 重定向的文件回读为产物证据（磁盘工作目录模式）
+      execCount += 1;
+      if (execCount > maxExec) throw new Error(`exec 动作数量超限（> ${maxExec}）`);
+      let cwd = null;
+      if (action.cwd) {
+        cwd = workDir ? assertNoSymlink(workDir, action.cwd) : safeJoin(process.cwd(), action.cwd);
+      } else if (workDir) {
+        cwd = workDir;
+      }
+      const res = runCommand(action.command, {
+        cwd: cwd ?? undefined,
+        timeoutMs: commandTimeoutMs,
+        expectedExit: action.expectedExit,
+        commandPolicy,
+      });
+      // 命令产物留档：outFile 重定向的文件回读为产物证据（磁盘工作目录模式）；路径防越界/防链接
       if (res.ok && action.outFile && cwd) {
-        const outAbs = join(cwd, action.outFile);
+        const outAbs = assertNoSymlink(cwd, action.outFile);
         if (existsSync(outAbs)) {
           files.push({ path: action.outFile, content: readFileSync(outAbs, 'utf8') });
         }

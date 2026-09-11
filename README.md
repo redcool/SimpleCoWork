@@ -186,6 +186,20 @@ exec 动作的 `outFile` 成功后回读为产物文件（测试命令证据留�
 - 报告末尾自动附"运行统计"：模型调用次数/总耗时/输出规模（按角色分列；OpenAI 响应带 usage 时含 token 数）——可用于成本评估。
 - 资产验收新增图片规则：`file_magic`（PNG/JPEG/JSON/hex 文件头）与 `image_dimensions`（零依赖解析真实宽高，可设 min/max），详见 `doc/roles.md`。
 
+## 在其他项目使用
+
+`doc/USAGE.md` 是给"把 CoWork 接进你自己的项目/agent 管道"的独立说明：三步接入、真实模型配置、团队任务、夜班、人工插话、`ship` 交付、以库方式调用（`createProject`）、安全基线。
+
+## 安全基线（摘要）
+
+- **agent 动作**：write/exec 路径一律校验（`../`、绝对路径、符号链接绕过均拒绝）；产物只能落在项目目录内
+- **agent 命令**：`engine.commands.allow` 白名单（默认 node/npm/npx/git；`allowAll:true` 才放开任意 shell）
+- **资源限制**：`engine.actionLimits`（动作数 / write 内容上限 / exec 次数）
+- **Web 面板**：127.0.0.1 + 会话 token（URL 携带，未认证 401）+ Origin/CSRF 校验 + body 1MiB 上限 + `/api/night` 仅 YYYY-MM-DD
+- **状态原子写**：`state.json` tmp+rename，崩溃/并发不写坏
+- **外部输入**：`--plan` 文件必须在项目目录内；`ship` 禁止路径越界与符号链接
+- 完整清单见 `doc/USAGE.md` 第 5 节
+
 ## 领域模型
 
 | 对象 | 含义 |

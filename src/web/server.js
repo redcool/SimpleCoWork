@@ -1,18 +1,33 @@
-// 零依赖 Web 面板服务器（node:http）：
-// - GET  /            面板页面
-// - GET  /api/state   项目状态摘要（从 .cowork/state.json 读取）
-// - GET  /api/night   夜班文档列表；?day=YYYY-MM-DD 返回 markdown
-// - POST /api/decisions  人工审批：{meetingId, decision, reason, actions[]} → 写回 state.json
+// 零依赖 Web 面板服务器（node:http）——安全基线：
+//  - 鉴权：/api/* 必须携带会话 token（header X-CoWork-Token 或 ?token=），未认证一律 401
+//  - 反 CSRF：带 Origin 的请求必须与本机面板同源，否则 403；JSON POST 跨站会先被 CORS 预检拦截
+//  - 请求体上限：POST body 超过 1MiB 直接 413（防资源耗尽）
+//  - /api/night?day= 只接受 YYYY-MM-DD（路径穿越防护）
+//  - 错误脱敏：内部异常不回传堆栈/绝对路径，仅写 stderr 供本地调试
+//  - 审批写回使用原子写（tmp+rename），避免运行/审批并发写出半截 state.json
+// 路由：
+//  - GET  /                  面板页面（无鉴权；页面 JS 从 URL query 读取 token 供 API 使用）
+//  - GET  /api/state         项目状态摘要（从 .cowork/state.json 读取）
+//  - GET  /api/night         夜班文档列表；?day=YYYY-MM-DD 返回 markdown
+//  - POST /api/decisions     人工审批：{meetingId, decision, reason, actions[]} → 写回 state.json
 import { createServer as httpCreateServer } from 'node:http';
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { atomicWrite, DAY_RE } from '../security.js';
 
 const UI_HTML = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'index.html'), 'utf8');
 
+const MAX_BODY_BYTES = 1024 * 1024; // 1MiB
+
 function json(res, status, data) {
   const body = JSON.stringify(data);
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(body) });
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'content-length': Buffer.byteLength(body),
+    'x-content-type-options': 'nosniff',
+  });
   res.end(body);
 }
 
@@ -67,7 +82,7 @@ function listNightDays(projectDir) {
   return readdirSync(dir).filter((f) => f.endsWith('.md')).map((f) => f.replace(/\.md$/, '')).sort();
 }
 
-/** 审批写回：把 escalated 会议置为 decided，并把关联任务改回 needs_revision（等待 run --resume 继续） */
+/** 审批写回：把 escalated 会议置为 decided，并把关联任务改回 needs_revision（等待 run --resume 继续）；原子写 */
 export function applyDecision(projectDir, { meetingId, decision, reason = '', actions = [] }) {
   const stateFile = join(projectDir, '.cowork', 'state.json');
   const st = readJson(stateFile);
@@ -91,23 +106,54 @@ export function applyDecision(projectDir, { meetingId, decision, reason = '', ac
     task.meta = { ...(task.meta ?? {}), humanBlocked: false, pendingDecisionId: meetingId };
     task.lastError = `已由人工审批（${meetingId}），等待 run --resume 继续`;
   }
-  writeFileSync(stateFile, JSON.stringify(st, null, 2), 'utf8');
+  atomicWrite(stateFile, JSON.stringify(st, null, 2));
   return { ok: true, meetingId, taskId: meeting.taskId ?? null };
 }
 
-/** 创建面板服务器；调用方自行 listen */
-export function createPanelServer({ projectDir }) {
+/** 认证检查：/api/* 必须带匹配 token；带 Origin 的请求必须同源（反 CSRF） */
+function authorize(req, url, token) {
+  const got = req.headers['x-cowork-token'] || url.searchParams.get('token') || '';
+  if (typeof got !== 'string' || got !== token) return false;
+  const origin = req.headers.origin;
+  if (origin) {
+    try {
+      const o = new URL(origin);
+      const same = o.host === (req.headers.host ?? '');
+      if (!same) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** 创建面板服务器；token 必填（startPanelServer 未提供时自动生成）。调用方自行 listen */
+export function createPanelServer({ projectDir, token = '' }) {
   return httpCreateServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
-      let body = '';
-      if (req.method === 'POST') {
-        for await (const chunk of req) body += chunk;
-      }
       if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'x-content-type-options': 'nosniff' });
         res.end(UI_HTML);
         return;
+      }
+      // 其余一律需要认证（含 /api/* 与任何未知路径）
+      if (!token || !authorize(req, url, token)) {
+        json(res, 401, { error: '未授权：请在 URL 中使用面板启动时打印的 token 访问' });
+        return;
+      }
+      // 读取请求体（限流 1MiB）
+      let body = '';
+      if (req.method === 'POST') {
+        let size = 0;
+        for await (const chunk of req) {
+          size += chunk.length;
+          if (size > MAX_BODY_BYTES) {
+            json(res, 413, { error: '请求体过大（上限 1 MiB）' });
+            return;
+          }
+          body += chunk;
+        }
       }
       if (req.method === 'GET' && url.pathname === '/api/state') {
         json(res, 200, buildStateView(projectDir));
@@ -116,6 +162,10 @@ export function createPanelServer({ projectDir }) {
       if (req.method === 'GET' && url.pathname === '/api/night') {
         const day = url.searchParams.get('day');
         if (day) {
+          if (!DAY_RE.test(day)) {
+            json(res, 400, { error: 'day 参数必须是 YYYY-MM-DD 格式' });
+            return;
+          }
           const file = join(projectDir, 'night-shift', `${day}.md`);
           json(res, existsSync(file) ? 200 : 404, existsSync(file)
             ? { day, markdown: readFileSync(file, 'utf8') }
@@ -143,19 +193,31 @@ export function createPanelServer({ projectDir }) {
       }
       json(res, 404, { error: `未知路径 ${url.pathname}` });
     } catch (err) {
-      json(res, 500, { error: err.message });
+      // 错误脱敏：外部只看到通用信息，细节留在本机 stderr
+      console.error('[panel] 内部错误:', err);
+      json(res, 500, { error: '服务器内部错误' });
     }
   });
 }
 
-/** 启动服务器：port=0 时由系统分配（测试用） */
-export function startPanelServer({ projectDir, port = 8765, host = '127.0.0.1' } = {}) {
-  const server = createPanelServer({ projectDir });
+/** 启动服务器：port=0 时由系统分配（测试用）；token 未提供时自动生成并随 url 返回 */
+export function startPanelServer({ projectDir, port = 8765, host = '127.0.0.1', token = null } = {}) {
+  const sessionToken = token ?? randomToken();
+  const server = createPanelServer({ projectDir, token: sessionToken });
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => {
       const addr = server.address();
-      resolve({ server, port: addr.port, url: `http://${host}:${addr.port}` });
+      resolve({
+        server,
+        port: addr.port,
+        token: sessionToken,
+        url: `http://${host}:${addr.port}/?token=${sessionToken}`,
+      });
     });
   });
+}
+
+function randomToken() {
+  return randomBytes(18).toString('base64url');
 }

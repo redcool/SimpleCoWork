@@ -149,29 +149,38 @@ test('面板 HTTP 服务：页面 / 状态 / 夜班列表-内容 / 审批接口'
     p.saveState();
     assert.equal(s.state, 'blocked');
 
-    const { server, url } = await startPanelServer({ projectDir: dir, port: 0 });
+    const { server, url, token } = await startPanelServer({ projectDir: dir, port: 0 });
+    const base = url.split('?')[0].replace(/\/$/, ''); // URL 带 ?token= 前缀；API 请求用 base + 显式认证头
+    const AUTH = { 'x-cowork-token': token };
     try {
-      const home = await (await fetch(url + '/')).text();
+      const home = await (await fetch(base + '/')).text();
       assert.ok(home.includes('CoWork 面板'));
 
-      const st = await (await fetch(url + '/api/state')).json();
+      // 无 token → 401；错 token → 401；跨站 Origin → 401
+      assert.equal((await fetch(base + '/api/state')).status, 401);
+      assert.equal((await fetch(base + '/api/state', { headers: { 'x-cowork-token': 'wrong' } })).status, 401);
+      assert.equal((await fetch(base + '/api/state', { headers: { ...AUTH, origin: 'https://evil.example' } })).status, 401);
+
+      const st = await (await fetch(base + '/api/state', { headers: AUTH })).json();
       assert.equal(st.summary.state, 'blocked');
       assert.ok(st.meetings.some((m) => m.status === 'escalated'));
 
-      const night = await (await fetch(url + '/api/night')).json();
+      const night = await (await fetch(base + '/api/night', { headers: AUTH })).json();
       assert.ok(night.days.includes('2026-09-11'));
-      const doc = await (await fetch(url + '/api/night?day=' + encodeURIComponent('2026-09-11'))).json();
+      const doc = await (await fetch(base + '/api/night?day=' + encodeURIComponent('2026-09-11'), { headers: AUTH })).json();
       assert.ok(doc.markdown.includes('### 决定'));
+      // day 路径穿越 → 400
+      assert.equal((await fetch(base + '/api/night?day=' + encodeURIComponent('../../secret'), { headers: AUTH })).status, 400);
 
-      const bad = await fetch(url + '/api/decisions', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+      const bad = await fetch(base + '/api/decisions', {
+        method: 'POST', headers: { ...AUTH, 'content-type': 'application/json' },
         body: JSON.stringify({ meetingId: 'm-x', decision: 'd' }),
       });
       assert.equal(bad.status, 409);
 
       const meetingId = st.meetings.find((m) => m.status === 'escalated').id;
-      const ok = await fetch(url + '/api/decisions', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+      const ok = await fetch(base + '/api/decisions', {
+        method: 'POST', headers: { ...AUTH, 'content-type': 'application/json' },
         body: JSON.stringify({ meetingId, decision: '修复', reason: '人', actions: [{ taskId: 't-dev', instruction: '修' }] }),
       });
       assert.equal(ok.status, 200);

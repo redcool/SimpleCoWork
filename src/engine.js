@@ -178,6 +178,8 @@ export class WorkflowEngine {
       const { files, execResults } = applyActions(parsed.actions, {
         workDir,
         commandTimeoutMs: this.engineOpts.commandTimeoutMs,
+        limits: this.engineOpts.actionLimits ?? {},
+        commandPolicy: this.engineOpts.commands ?? null,
       });
 
       const artifact = this.artifacts.submit({
@@ -240,6 +242,8 @@ export class WorkflowEngine {
       const { files, execResults } = applyActions(final.actions, {
         workDir,
         commandTimeoutMs: this.engineOpts.commandTimeoutMs,
+        limits: this.engineOpts.actionLimits ?? {},
+        commandPolicy: this.engineOpts.commands ?? null,
       });
 
       const artifact = this.artifacts.submit({

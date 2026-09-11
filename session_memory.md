@@ -35,6 +35,8 @@
 | ADR-22 | 运行统计：engine 统一 `#callProvider` 包装（detail 模式返回 {text,usage}），记录次数/耗时/输出规模/tokens；报告附"运行统计"表 | 成本与性能可观测；OpenAI usage 直接入账 |
 | ADR-23 | 图片资产规则：`file_magic`（PNG/JPEG/JSON/hex 文件头）+ `image_dimensions`（零依赖解析 PNG IHDR / JPEG SOF 真实宽高）；write 动作支持 `encoding:'latin1'` 上传二进制（落盘/ship 按字节还原） | 真图校验（防改名占位）；二进制资产在零依赖下完整保留 |
 | ADR-24 | `cowork ship <dir> [--branch=]`：读取 .cowork/state.json 已批准产物 → 写回项目目录（防 `..` 逃逸）→ git 分支提交 | 交付即提交、分支隔离、可回滚；TaskStore.create 白名单需显式保留 team 字段 |
+| ADR-25 | 安全加固轮：src/security.js 统一基元——safeJoin（../与绝对路径逃逸）、assertNoSymlink（逐级 lstat 防链接绕过）、atomicWrite、DAY_RE（含月/日语义）、命令白名单（basename 匹配，支持引号路径/.exe）；runner 落盘/ship/--plan 全走安全路径；exec 命令白名单（默认 node/npm/npx/git）+ actionLimits 资源限制；面板 token+Origin 反 CSRF+body 1MiB+day 语义校验+错误脱敏；state.json 原子写 | 最高优先级六项 + 次要四项全部闭环；security.test 10 例 |
+| ADR-26 | doc/USAGE.md：在其他项目使用 CoWork 的独立说明（三步接入/配置/玩法/以库集成/安全基线/FAQ） | 复用门槛降至 5 分钟 |
 
 ## 关键实现约定（编写代码前必读）
 
@@ -65,12 +67,13 @@
 - [x] P13 工作室模式（自定义角色放开 + reviewer accepts 按产物匹配 + oracle 资产规则 min_size/json_valid + exec outFile 回读；`examples/game-studio-demo` 全流程演示"冲突会议→重画→完成"）
 - [x] P14 团队任务（`task.team` 同角色多 agent：并行产出→互评→择优→整合；demo 策划 2 人团队；TaskStore 显式保留 team）
 - [x] P15 增强包（oracle 图片规则 file_magic/image_dimensions + write encoding latin1；engine 运行统计/token；`cowork ship` git 分支交付；`doc/roles.md` 角色职责说明书；demo 增加 writer/audio 角色）
+- [x] P16 安全加固（路径越界/符号链接/命令白名单/面板鉴权与反 CSRF/day 穿越/body 限制/原子写/错误脱敏/动作资源限制全部闭环；`doc/USAGE.md` 接入手册）
 
-**三个里程碑 + 工作室模式完工。** 全量测试 **79/79**（P14/P15 使 76→79）。待用户环境验证：真实 Agnes/OpenAI 模型联网实测（密钥已接通、agnes-2.5-flash 连通性测试通过）；面板跨机使用时的鉴权考虑。
+**三个里程碑 + 工作室模式 + 安全加固完工。** 全量 **87 通过 + 2 跳过**（跳过=本机无法创建符号链接的用例；用例数 76→79→89）。待用户环境验证：真实 Agnes/OpenAI 模型联网实测（密钥已接通、agnes-2.5-flash 连通性测试通过）；面板跨机使用时的鉴权考虑。
 
 ## 下一步
 
-1. 请用户按 REVIEW.md 人工验收清单确认（79/79 测试；五条 CLI 链路 + team + ship）
+1. 请用户按 REVIEW.md 人工验收清单确认（87+2 测试；CLI 链路 + team + ship + serve token）
 2. 真实模型联调：`examples/agnes-demo` 已接通（4/4 approved），可把 agnes 与团队任务组合实测
 3. 候选增强：token/成本统计入 Web 面板、多项目并发、agent 动态增删、ESM 语法校验扩展、图片内容级校验（尺寸/配色直方图）
 

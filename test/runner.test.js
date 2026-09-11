@@ -40,7 +40,7 @@ test('applyActions：write 落盘、exec 执行并记录退出码', () => {
         { type: 'exec', command: `"${process.execPath}" -e "process.exit(0)"`, expectedExit: 0 },
         { type: 'exec', command: `"${process.execPath}" -e "process.exit(3)"`, expectedExit: 0 },
       ],
-      { workDir: dir, commandTimeoutMs: 30000 },
+      { workDir: dir, commandTimeoutMs: 30000, commandPolicy: { allow: ['node'] } },
     );
     assert.equal(files.length, 1, '只有 write 动作计入 files');
     assert.equal(readFileSync(join(dir, 'src', 'a.js'), 'utf8'), 'module.exports = 1;');
@@ -53,7 +53,7 @@ test('applyActions：write 落盘、exec 执行并记录退出码', () => {
 });
 
 test('runCommand 超时被杀不误判成功', () => {
-  const r = runCommand('"node" -e "setTimeout(()=>{}, 5000)"', { timeoutMs: 200 });
+  const r = runCommand('"node" -e "setTimeout(()=>{}, 5000)"', { timeoutMs: 200, commandPolicy: { allow: ['node'] } });
   assert.equal(r.ok, false);
   assert.ok(r.timedOut);
 });
