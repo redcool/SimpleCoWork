@@ -12,7 +12,8 @@ export function createOpenAIProvider(config = {}) {
 
   return {
     name: 'openai',
-    async generate(ctx) {
+    /** opts.detail=true 时返回 { text, usage }（usage 来自响应 usage 字段，可能为 null） */
+    async generate(ctx, opts = {}) {
       const model = ctx.model || defaultModel;
       const messages = [
         { role: 'system', content: ctx.system },
@@ -40,6 +41,7 @@ export function createOpenAIProvider(config = {}) {
       if (typeof content !== 'string') {
         throw new Error(`openai 返回缺少 content: ${JSON.stringify(data).slice(0, 300)}`);
       }
+      if (opts.detail) return { text: content, usage: data?.usage ?? null };
       return content;
     },
   };

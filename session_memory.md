@@ -31,6 +31,10 @@
 | ADR-18 | 角色白名单放开：任意小写标识符角色均可（producer/game-designer/artist/…），architect/planner/developer/reviewer/manager 保留特殊引擎语义 | 工作室模式：角色即配置，创意流水线（制作→策划→美术/程序→QA/艺术总监→导演）可直接表达 |
 | ADR-19 | 评审者按产物匹配：reviewer agent 可带 `accepts:['art','code']`，引擎先精确匹配（产物名/生产者角色），无匹配时通用兜底；评审者不自审；架构/规划设计产物由内建门自审 | 美术产物由艺术总监审、代码由 QA 审；兼容旧测试语义 |
 | ADR-20 | Oracle 新增资产规则：`min_size`（防空占位资产，min 字节）+ `json_valid`（合法 JSON），归入内容类规则（ifPresent 可跳过）；exec 的 `outFile` 成功时回读为产物文件（测试证据留档） | 图片/配置类资产可机检；命令产物进入产物版本，可审计可回放 |
+| ADR-21 | 同角色多 agent：`task.team` 团队任务（R1 并行产出→R2 互评 scores/pick/notes→R3 胜出者整合提交；平局组长仲裁）；产物 meta.team 记录全流程 | 满足"同类角色分工协作、讨论找出最优解"；模型调用 = 人数×(产出+评审)+1 |
+| ADR-22 | 运行统计：engine 统一 `#callProvider` 包装（detail 模式返回 {text,usage}），记录次数/耗时/输出规模/tokens；报告附"运行统计"表 | 成本与性能可观测；OpenAI usage 直接入账 |
+| ADR-23 | 图片资产规则：`file_magic`（PNG/JPEG/JSON/hex 文件头）+ `image_dimensions`（零依赖解析 PNG IHDR / JPEG SOF 真实宽高）；write 动作支持 `encoding:'latin1'` 上传二进制（落盘/ship 按字节还原） | 真图校验（防改名占位）；二进制资产在零依赖下完整保留 |
+| ADR-24 | `cowork ship <dir> [--branch=]`：读取 .cowork/state.json 已批准产物 → 写回项目目录（防 `..` 逃逸）→ git 分支提交 | 交付即提交、分支隔离、可回滚；TaskStore.create 白名单需显式保留 team 字段 |
 
 ## 关键实现约定（编写代码前必读）
 
@@ -59,14 +63,16 @@
 - [x] P11 规划器（`cowork plan` 主题→模块 DAG；`run --plan` 执行）
 - [x] P12 整体测试与审核（**71/71 测试绿**、全文件语法绿、REVIEW.md 增补 + 4 条 CLI 端到端实测）
 - [x] P13 工作室模式（自定义角色放开 + reviewer accepts 按产物匹配 + oracle 资产规则 min_size/json_valid + exec outFile 回读；`examples/game-studio-demo` 全流程演示"冲突会议→重画→完成"）
+- [x] P14 团队任务（`task.team` 同角色多 agent：并行产出→互评→择优→整合；demo 策划 2 人团队；TaskStore 显式保留 team）
+- [x] P15 增强包（oracle 图片规则 file_magic/image_dimensions + write encoding latin1；engine 运行统计/token；`cowork ship` git 分支交付；`doc/roles.md` 角色职责说明书；demo 增加 writer/audio 角色）
 
-**两阶段 + 工作室模式完工。** 待用户环境验证：真实 Agnes/OpenAI 模型联网实测（密钥已接通、agnes-2.5-flash 连通性测试通过）；面板跨机使用时的鉴权考虑。
+**三个里程碑 + 工作室模式完工。** 全量测试 **79/79**（P14/P15 使 76→79）。待用户环境验证：真实 Agnes/OpenAI 模型联网实测（密钥已接通、agnes-2.5-flash 连通性测试通过）；面板跨机使用时的鉴权考虑。
 
 ## 下一步
 
-1. 请用户按 REVIEW.md 人工验收清单确认（76/76 测试；五条 CLI 链路：run / --night / --plan / serve+resume / game-studio）
-2. 制作人与策划的角色职责边界（vision vs GDD）可进一步在 prompt 层定制
-3. 候选增强：token/成本统计、Git 分支隔离、多项目并发、美术资产真图验证（规则扩展）、ESM 语法校验扩展
+1. 请用户按 REVIEW.md 人工验收清单确认（79/79 测试；五条 CLI 链路 + team + ship）
+2. 真实模型联调：`examples/agnes-demo` 已接通（4/4 approved），可把 agnes 与团队任务组合实测
+3. 候选增强：token/成本统计入 Web 面板、多项目并发、agent 动态增删、ESM 语法校验扩展、图片内容级校验（尺寸/配色直方图）
 
 ## 注意事项
 

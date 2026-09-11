@@ -53,7 +53,10 @@ export function buildReportSnapshot(project, engine) {
       state: engine.summary().state,
     },
     tasks: tasks.map((t) => ({
-      id: t.id, name: t.name, agentId: t.agentId, state: t.state,
+      id: t.id, name: t.name, agentId: t.agentId ?? null,
+      team: Array.isArray(t.team) ? t.team : null,
+      teamResult: t.teamResult ?? null,
+      state: t.state,
       attempts: t.attempts, escalations: t.escalations, lastError: t.lastError, result: t.result,
     })),
     artifacts: artifacts.map((a) => ({
@@ -113,14 +116,22 @@ export async function buildReport(project, engine, { withNarrative = true } = {}
       }
     }
   }
-  const report = { ...snapshot, narrative };
+  const report = { ...snapshot, narrative, stats: engine.statsSummary() };
   return { report, markdown: renderMarkdown(report) };
+}
+
+function renderAgentCell(t) {
+  if (Array.isArray(t.team) && t.team.length) {
+    const winner = t.teamResult?.winner;
+    return `${t.team.join('+')}${winner ? `（胜出 ${winner}）` : ''}`;
+  }
+  return t.agentId ?? '—';
 }
 
 export function renderMarkdown(report) {
   const s = report.summary;
   const rows = report.tasks
-    .map((t) => `| ${t.id} | ${t.name} | ${t.agentId} | ${t.state} | ${t.attempts} | ${t.escalations} | ${t.lastError ?? '—'} |`)
+    .map((t) => `| ${t.id} | ${t.name} | ${renderAgentCell(t)} | ${t.state} | ${t.attempts} | ${t.escalations} | ${t.lastError ?? '—'} |`)
     .join('\n');
   return [
     `# 项目汇报：${report.project.name}`,
@@ -167,5 +178,26 @@ export function renderMarkdown(report) {
     '',
     report.nextActions.length ? report.nextActions.map((n) => `- ${n}`).join('\n') : '- 无',
     '',
+    '## 运行统计',
+    '',
+    ...renderStats(report.stats),
+    '',
   ].join('\n');
+}
+
+/** 运行统计渲染：调用次数/耗时/输出规模（含 token 计费数据，若有） */
+function renderStats(stats) {
+  if (!stats || stats.calls === 0) return ['- （无模型调用）'];
+  const fmtMs = (ms) => (ms >= 60000 ? `${(ms / 60000).toFixed(1)} 分钟` : `${Math.round(ms)} ms`);
+  const lines = [
+    `- 模型调用 ${stats.calls} 次，总耗时 ${fmtMs(stats.totalMs)}，总输出 ${stats.totalChars} 字符`,
+  ];
+  if (stats.totalPromptTokens || stats.totalCompletionTokens) {
+    lines.push(`- Token：prompt ${stats.totalPromptTokens}，completion ${stats.totalCompletionTokens}`);
+  }
+  lines.push('', '| 角色 | 调用 | 耗时 | 输出 |', '|---|---|---|---|');
+  for (const r of stats.byRole ?? []) {
+    lines.push(`| ${r.key} | ${r.calls} | ${fmtMs(r.ms)} | ${r.chars} 字符 |`);
+  }
+  return lines;
 }

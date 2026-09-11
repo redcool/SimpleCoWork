@@ -24,6 +24,63 @@ export class WorkflowEngine {
   }
 
   #inflight = new Set();
+  #stats = []; // 每次模型调用的运行统计（耗时/输出规模/tokens）
+
+  /** 统一的模型调用入口：计时、记录 usage（detail 模式）、收集运行统计 */
+  async #callProvider(provider, args) {
+    const t0 = Date.now();
+    const raw = await provider.generate(args, { detail: true });
+    const durationMs = Date.now() - t0;
+    const text = raw && typeof raw === 'object' && 'text' in raw ? raw.text : String(raw);
+    const usage = raw && typeof raw === 'object' && 'text' in raw ? raw.usage ?? null : null;
+    this.#stats.push({
+      at: new Date().toISOString(),
+      provider: provider.name ?? '?',
+      model: args.model ?? null,
+      role: args.role ?? null,
+      taskId: args.task?.id ?? null,
+      attempt: args.attempt ?? null,
+      mode: args.mode ?? 'produce',
+      member: args.member ?? null,
+      durationMs,
+      outputChars: text.length,
+      promptTokens: usage?.prompt_tokens ?? null,
+      completionTokens: usage?.completion_tokens ?? null,
+    });
+    return text;
+  }
+
+  /** 运行统计（只读，供 reporter/面板展示 token 与耗时成本） */
+  stats() {
+    return [...this.#stats];
+  }
+
+  statsSummary() {
+    const s = this.#stats;
+    const group = (key) => {
+      const m = new Map();
+      for (const x of s) {
+        const k = x[key] ?? '(未指定)';
+        if (!m.has(k)) m.set(k, { calls: 0, ms: 0, chars: 0, promptTokens: 0, completionTokens: 0 });
+        const e = m.get(k);
+        e.calls += 1;
+        e.ms += x.durationMs ?? 0;
+        e.chars += x.outputChars ?? 0;
+        e.promptTokens += x.promptTokens ?? 0;
+        e.completionTokens += x.completionTokens ?? 0;
+      }
+      return [...m.entries()].map(([k, e]) => ({ key: k, ...e })).sort((a, b) => b.ms - a.ms);
+    };
+    return {
+      calls: s.length,
+      totalMs: s.reduce((a, x) => a + (x.durationMs ?? 0), 0),
+      totalChars: s.reduce((a, x) => a + (x.outputChars ?? 0), 0),
+      totalPromptTokens: s.reduce((a, x) => a + (x.promptTokens ?? 0), 0),
+      totalCompletionTokens: s.reduce((a, x) => a + (x.completionTokens ?? 0), 0),
+      byRole: group('role'),
+      byModel: group('model'),
+    };
+  }
 
   // ---------- 主循环 ----------
 
@@ -82,8 +139,9 @@ export class WorkflowEngine {
     return true;
   }
 
-  /** 执行单个产出任务（agent 运行，异步互不干扰） */
+  /** 执行单个产出任务（agent 运行，异步互不干扰）；team 团队任务走 #runTeamTask */
   async #runTask(task) {
+    if (Array.isArray(task.team) && task.team.length > 1) return this.#runTeamTask(task);
     const agent = this.agents.get(task.agentId);
     task.attempts += 1;
     const attempt = task.attempts;
@@ -104,7 +162,7 @@ export class WorkflowEngine {
       if (pending?.decision) extra.decision = pending.decision;
 
       const { system, user } = buildPrompt({ agent, task, inputs, extra });
-      const raw = await provider.generate({
+      const raw = await this.#callProvider(provider, {
         system,
         user,
         model: agent.model,
@@ -142,6 +200,188 @@ export class WorkflowEngine {
       this.running -= 1;
       if (task.state !== 'failed') this.agents.setState(agent.id, 'idle');
     }
+  }
+
+  // ---------- 团队任务（同角色多 agent 协作讨论，找出最优解） ----------
+
+  /** 团队任务：R1 并行产出方案 → R2 相互评审（评分/互选/提改进） → 择优 → 胜出者整合为最终产物 */
+  async #runTeamTask(task) {
+    const memberIds = task.team;
+    const members = memberIds.map((id) => this.agents.get(id));
+    task.attempts += 1;
+    const attempt = task.attempts;
+    for (const m of members) {
+      this.agents.markRunStart(m.id, task.id);
+      this.agents.setState(m.id, 'running', { currentTaskId: task.id });
+    }
+    this.running += 1;
+    this.bus.emit('task.started', { id: task.id, attempt, team: memberIds });
+    try {
+      this.tasks.transition(task.id, 'running', { attempt });
+      const inputs = this.#resolveInputs(task);
+
+      // R1：全体成员并行产出各自方案（不落盘，仅取文本用于讨论）
+      const proposals = await Promise.all(
+        members.map((m) => this.#teamProduce(m, task, attempt, inputs)),
+      );
+
+      // R2：互评（每人看全组方案，打分/互选/提改进意见）
+      const judges = await Promise.all(
+        members.map((m) => this.#teamJudge(m, task, proposals)),
+      );
+
+      // 择优：多数互选 → 平局由组长（members[0]）仲裁
+      const winner = this.#pickTeamWinner(members, judges);
+
+      // R3：胜出者整合全体意见，产出最终版
+      const final = await this.#teamFinalize(winner, task, attempt, inputs, proposals, judges);
+
+      const workDir = this.#workDirFor(task, attempt);
+      const { files, execResults } = applyActions(final.actions, {
+        workDir,
+        commandTimeoutMs: this.engineOpts.commandTimeoutMs,
+      });
+
+      const artifact = this.artifacts.submit({
+        name: task.outputs[0],
+        producer: winner.id,
+        taskId: task.id,
+        baseArtifacts: inputs.map((a) => a.id),
+        summary: final.summary,
+        text: final.text,
+        files,
+        meta: {
+          attempt,
+          execResults,
+          team: {
+            members: memberIds,
+            proposals: proposals.map((p) => ({ agentId: p.agentId, summary: p.parsed.summary ?? '' })),
+            judges: judges.map((j) => ({ agentId: j.agentId, pick: j.pick, score: j.score, notes: j.notes })),
+            winner: winner.id,
+            rationale: (judges.find((j) => j.agentId === winner.id)?.notes ?? '') || '团队互评择优',
+          },
+        },
+      });
+      task.result = { summary: final.summary, knownIssues: final.knownIssues, artifactId: artifact.id };
+      task.teamResult = { winner: winner.id, members: memberIds };
+      this.tasks.transition(task.id, 'submitted', { result: { ...task.result } });
+    } catch (err) {
+      task.lastError = err.message;
+      this.tasks.transition(task.id, 'failed', { lastError: err.message });
+      for (const m of members) this.agents.setState(m.id, 'failed', { lastError: err.message });
+    } finally {
+      this.running -= 1;
+      for (const m of members) this.agents.setState(m.id, 'idle');
+    }
+  }
+
+  /** 团队成员独立产出一版方案（标准产出协议，仅取 summary/text 供讨论） */
+  async #teamProduce(agent, task, attempt, inputs) {
+    const provider = this.providers.get(agent.provider);
+    const { system, user } = buildPrompt({ agent, task, inputs });
+    const raw = await this.#callProvider(provider, {
+      system,
+      user,
+      model: agent.model,
+      role: agent.role,
+      task: { id: task.id, name: task.name },
+      attempt,
+      inputs,
+      mode: 'team-produce',
+      member: agent.id,
+    });
+    const parsed = parseModelOutput(raw);
+    if (!parsed.done) throw new Error(`团队成员 ${agent.id} 输出 done=false：${parsed.summary || '未完成'}`);
+    return { agentId: agent.id, parsed };
+  }
+
+  /** 团队互评：每人审阅全组方案，输出 {pick, score, notes} */
+  async #teamJudge(agent, task, proposals) {
+    const provider = this.providers.get(agent.provider);
+    const user = [
+      `# 团队方案评审（任务 ${task.id}：${task.name}）`,
+      `你是"${agent.title || agent.role}"。以下是同组各成员提出的方案，请阅读全部后：`,
+      '1) 给每个方案打分（1-100 整数）；2) 选出你认为最优的方案（pick=对应成员 id）；3) 给出可执行的改进意见（notes）。',
+      '',
+      ...proposals.map((p, i) => [
+        `--- 方案 ${i + 1}（成员 ${p.agentId}）---`,
+        `摘要：${p.parsed.summary ?? ''}`,
+        `正文：${truncate(p.parsed.text ?? '', 2200)}`,
+      ].join('\n')),
+      '',
+      '输出严格 JSON（不得输出其它解释）：',
+      '{"summary":"评审小结","scores":{"成员id":90},"pick":"成员id","score":90,"notes":"对最优方案的改进意见"}',
+      '- pick 必须为上述成员 id 之一；score 为整体最优评分。',
+    ].join('\n');
+    const raw = await this.#callProvider(provider, {
+      system: agent.prompt,
+      user,
+      model: agent.model,
+      role: agent.role,
+      task: { id: task.id, name: task.name },
+      mode: 'team-judge',
+      member: agent.id,
+    });
+    const parsed = parseOutputLoose(raw) ?? {};
+    let pick = parsed.pick;
+    if (!pick || !proposals.some((p) => p.agentId === pick)) {
+      // 未指定有效 pick 则选自己（无法自评才回退）
+      pick = proposals.some((p) => p.agentId === agent.id)
+        ? (parsed.scores ? Object.keys(parsed.scores).sort((a, b) => (parsed.scores[b] ?? 0) - (parsed.scores[a] ?? 0))[0] : agent.id)
+        : agent.id;
+    }
+    return {
+      agentId: agent.id,
+      pick,
+      score: Number.isFinite(Number(parsed.score)) ? Number(parsed.score) : 0,
+      notes: parsed.notes || parsed.text || '',
+      summary: parsed.summary || '',
+    };
+  }
+
+  /** 择优：多数互选胜出；平局由组长（members[0]）仲裁 */
+  #pickTeamWinner(members, judges) {
+    const count = new Map(members.map((m) => [m.id, 0]));
+    for (const j of judges) {
+      if (count.has(j.pick)) count.set(j.pick, count.get(j.pick) + 1);
+    }
+    const best = Math.max(...count.values());
+    const leaders = members.filter((m) => count.get(m.id) === best);
+    const winnerId = leaders.length === 1 ? leaders[0].id : members[0].id;
+    return members.find((m) => m.id === winnerId) ?? members[0];
+  }
+
+  /** 胜出者整合：综合全体方案与评审意见，输出最终版（标准产出协议） */
+  async #teamFinalize(winner, task, attempt, inputs, proposals, judges) {
+    const provider = this.providers.get(winner.provider);
+    const user = [
+      `# 团队方案整合（任务 ${task.id}：${task.name}）`,
+      `你在团队互评中胜出。请综合以下材料，输出本任务的最终交付（严格 JSON，标准产出协议）：`,
+      '',
+      '## 全体成员方案（只读）',
+      ...proposals.map((p) => `- [${p.agentId}] ${truncate(p.parsed.text ?? p.parsed.summary ?? '', 2500)}`),
+      '',
+      '## 评审意见（只读）',
+      ...judges.map((j) => `- [${j.agentId}] pick=${j.pick} score=${j.score} 意见：${truncate(j.notes ?? '', 900)}`),
+      '',
+      '请把最优方案的亮点与评审意见融合进最终产出，输出标准 JSON：',
+      '{"summary":"最终交付摘要","text":"实现说明","actions":[{"type":"write","path":"文件名","content":"完整内容"}],"knownIssues":[],"done":true}',
+      '- done 必须为 true；actions 只写本任务应交付的文件。',
+    ].join('\n');
+    const raw = await this.#callProvider(provider, {
+      system: winner.prompt,
+      user,
+      model: winner.model,
+      role: winner.role,
+      task: { id: task.id, name: task.name },
+      attempt,
+      inputs,
+      mode: 'team-finalize',
+      member: winner.id,
+    });
+    const parsed = parseModelOutput(raw);
+    if (!parsed.done) throw new Error(`团队成员 ${winner.id}（整合轮）输出 done=false`);
+    return parsed;
   }
 
   // ---------- 质量门 ----------
@@ -330,7 +570,7 @@ export class WorkflowEngine {
       '{"summary":"决策结论","text":"给出这样决策的理由","actions":[{"taskId":"任务ID","instruction":"补救指令"}],"knownIssues":[],"done":true}',
       '- actions 每项必须含 taskId 与 instruction，用于分工解决。',
     ].join('\n');
-    const raw = await provider.generate({
+    const raw = await this.#callProvider(provider, {
       system: decider.prompt,
       user,
       model: decider.model,
@@ -377,7 +617,7 @@ export class WorkflowEngine {
       `你是项目里的"${agent.title || agent.role}"，请从你的角色视角分析问题并给出解决方案建议（简要、可执行）。`,
       '输出严格 JSON（不得输出其它解释）：{"summary":"你的观点与建议","text":"详细分析","actions":[],"knownIssues":[],"done":true}',
     ].join('\n');
-    const raw = await provider.generate({
+    const raw = await this.#callProvider(provider, {
       system: agent.prompt,
       user,
       model: agent.model,
@@ -409,7 +649,7 @@ export class WorkflowEngine {
       '{"summary":"决策结论","text":"给出这样决策的理由","actions":[{"taskId":"任务ID","instruction":"补救指令"}],"knownIssues":[],"done":true}',
       '- actions 每项必须含 taskId 与 instruction，用于分工解决。',
     ].join('\n');
-    const raw = await provider.generate({
+    const raw = await this.#callProvider(provider, {
       system: chair.prompt,
       user,
       model: chair.model,
@@ -462,13 +702,14 @@ export class WorkflowEngine {
       gateVerdict: gateVerdict.verdict,
     };
     const fullUser = `${user}\n\n## 质量门数据（只读）\n${JSON.stringify(gateData)}\n\n## 判定规范\n- 只要存在 applicable!==false 且 severity=high 且 passed=false 的检查，就必须判 FAIL；\n- 通过则判 PASS；issues 列出失败项。\n- 你只审查，不许修改产物（actions 必须为 []）。`;
-    const raw = await provider.generate({
+    const raw = await this.#callProvider(provider, {
       system,
       user: fullUser,
       model: reviewer.model,
       role: reviewer.role,
       task: { id: task.id, name: task.name },
       gate: gateData,
+      mode: 'review',
     });
     const parsed = parseModelOutput(raw);
     const failed = parsed.summary.toUpperCase().startsWith('FAIL');
@@ -522,13 +763,16 @@ export class WorkflowEngine {
   }
 
   /** 选取审核者：优先 accepts 与任务匹配的 reviewer（按产物名或生产者角色）；
-   *  无匹配时按语义回退——评审者不自审、架构/规划类设计产物由内建门自审，其余取第一个 reviewer 兜底 */
+   *  无匹配时按语义回退——评审者不自审、架构/规划类设计产物由内建门自审，其余取第一个 reviewer 兜底。
+   *  团队任务取全部成员判断角色（任一成员为评审/架构/规划角色即交给内建门）。 */
   #reviewerFor(task) {
     const reviewers = this.agents.byRole('reviewer');
     if (reviewers.length === 0) return null;
 
-    let producer = null;
-    try { producer = this.agents.get(task.agentId); } catch { /* 未知 id 交给上游报错 */ }
+    const ids = Array.isArray(task.team) && task.team.length ? task.team : [task.agentId];
+    const producers = ids
+      .map((id) => { try { return this.agents.get(id); } catch { return null; } })
+      .filter(Boolean);
 
     const matched = (r) => {
       const accepts = Array.isArray(r.accepts) ? r.accepts : [];
@@ -539,10 +783,14 @@ export class WorkflowEngine {
     };
 
     const exact = reviewers.find(matched);
-    if (exact) return exact.id === task.agentId ? null : exact; // 唯一候选是自己 → 不自我审核
+    if (exact) {
+      // 唯一候选就是（单 agent 任务的）生产者本人 → 不自我审核
+      if (!Array.isArray(task.team) && exact.id === task.agentId) return null;
+      return exact;
+    }
 
-    // 无精确匹配：评审角色不自审；架构/规划产物（规则来源本身）由内建质量门自审
-    if (producer && (producer.role === 'reviewer' || producer.role === 'architect' || producer.role === 'planner')) return null;
+    // 无精确匹配：评审/架构/规划角色的产出由内建质量门自审，不额外安排评审者
+    if (producers.some((p) => ['reviewer', 'architect', 'planner'].includes(p.role))) return null;
     return reviewers.find((r) => !Array.isArray(r.accepts) || r.accepts.length === 0) ?? reviewers[0];
   }
 
@@ -607,7 +855,9 @@ export class WorkflowEngine {
       nightShift: this.#isNightShift(),
       needsHuman: blocked.map((t) => ({ id: t.id, taskName: t.name, reason: t.lastError ?? '等待会议决策/人工处理' })),
       tasks: tasks.map((t) => ({
-        id: t.id, name: t.name, state: t.state, agentId: t.agentId,
+        id: t.id, name: t.name, state: t.state,
+        agentId: t.agentId ?? null,
+        team: Array.isArray(t.team) ? t.team : null,
         attempts: t.attempts, escalations: t.escalations, lastError: t.lastError,
       })),
     };

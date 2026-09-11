@@ -79,6 +79,8 @@
 | 本会话 | P11 | 规划器：cowork plan 主题→模块 DAG；run --plan 执行 | ✅ |
 | 本会话 | P12 | 全量测试 71/71、语法检查全文件、REVIEW.md 增补 + 4 条 CLI 端到端实测 | ✅ |
 | 本会话 | P13 | 工作室模式：自定义角色（producer/策划/美术/程序/QA/艺术总监/导演）+ accepts 按产物匹配评审 + min_size/json_valid 资产规则 + exec outFile 回读；game-studio-demo 冲突会议闭环；测试 76/76 | ✅ |
+| 本会话 | P14 | 团队任务（task.team：同角色多 agent 并行产出→互评→择优→整合；策划 2 人团队产出融合 GDD） | ✅ |
+| 本会话 | P15 | 图片规则（file_magic/image_dimensions + latin1 编码）、运行统计（次数/耗时/输出/token）、cowork ship git 分支交付、doc/roles.md、demo 增 writer/audio；测试 79/79 | ✅ |
 
 ## 五、最终验收标准（总）
 
@@ -127,3 +129,16 @@
   4. exec `outFile` 成功时回读为产物文件（评测命令证据留档到产物版本）；
   5. `examples/game-studio-demo`：制作人→策划→美术/程序并行→QA/艺术总监分别审查→导演汇报；美术 v1 不符合策划规格 → 质量门拦截 → 会议裁决 → 重画 v2 通过（冲突解决闭环）。
 - 验收：studio.test 5 例全绿（自定义角色校验/资产规则/accepts 匹配/兜底回退/demo 端到端）；**全量 76/76**；CLI 实跑 game-studio-demo completed（报道含会议决策与分级审查记录）✅
+
+### P14 团队任务（同角色多 agent 讨论择优）✅
+- 交付：`task.team:['id1','id2']` 团队任务——R1 并行产出各自方案 → R2 相互评审（scores/pick/notes）→ R3 胜出者整合为最终交付提交质量门（平局组长仲裁）；产物 meta.team 记录成员/评审/胜出者；TaskStore.create 显式保留 team 字段；报告任务表显示"成员+（胜出 X）"
+- 验收：团队配置校验（长度/未知成员/与 agentId 互斥）、互评择优（winner=最高分者、meta.team 完整）、demo 策划 2 人团队（产出 GDD 含数值曲线）全绿 ✅
+
+### P15 增强包（图片规则 / 运行统计 / git ship / doc）✅
+- 交付：
+  1. oracle 图片规则：`file_magic`（PNG/JPEG/JSON/hex 文件头魔数）+ `image_dimensions`（零依赖解析 PNG IHDR / JPEG SOF 真实宽高，min/max）；write 动作支持 `encoding:'latin1'`（二进制资产按字节落盘/提交/还原）；
+  2. 运行统计：engine `#callProvider` 统一计时与 usage 采集，报告附"运行统计"（调用/耗时/输出/按角色/按模型，含 tokens 若有）；
+  3. `cowork ship <dir> [--branch=名]`：已批准产物写回项目目录（防 `..` 逃逸）并 git 分支提交（交付即提交）；
+  4. `doc/roles.md` 角色职责说明书；
+  5. demo 增补 writer/audio 角色与任务（7 任务）。
+- 验收：studio.test 增补 3 例（team 校验/team 择优/图片规则）；demo e2e 7/7（团队+会议+统计断言）；**全量 79/79**；CLI 实跑：完整报告含团队标记与运行统计；ship 冒烟（临时 git 仓库 commit 9 文件/7 产物）✅

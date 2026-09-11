@@ -40,6 +40,7 @@ export class ArtifactStore {
       files: (files ?? []).map((f) => ({
         path: f.path,
         content: String(f.content ?? ''),
+        encoding: f.encoding ?? 'utf8', // 资产文件落盘/提交时使用的编码（latin1 保留二进制字节）
         checksum: f.checksum ?? sha256(f.content),
         size: Buffer.byteLength(String(f.content ?? ''), 'utf8'),
       })),

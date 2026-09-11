@@ -176,6 +176,16 @@ exec 动作的 `outFile` 成功后回读为产物文件（测试命令证据留�
 
 完整工作室流水线见 `examples/game-studio-demo`（制作人→策划→美术/程序并行→QA/艺术总监分级审查→导演汇报，含"美术不符合策划规格→会议裁决→重画通过"闭环）。
 
+### 团队任务：同角色多 agent 讨论择优
+
+同一角色可配置多个 agent，任务声明 `team: ['id1','id2']` 即进入团队模式：**并行产出一版方案 → 相互评审（打分/互选/改进意见）→ 择优 → 胜出者整合为最终交付**（平局由组长仲裁）。产物记录团队元数据（成员/评审/胜出者），报告显示 `designer-senior+designer-numeric（胜出 designer-senior）`。示例：`examples/game-studio-demo` 的 t-gdd 由资深+数值两名策划团队讨论产出（把数值曲线融进最终 GDD）。
+
+### 交付与统计
+
+- `node bin/cowork.js ship <dir> [--branch=名]`：把已批准产物写入项目目录并提交到 git 分支（交付即提交、分支隔离；二进制按 latin1 还原，禁止路径越界）。
+- 报告末尾自动附"运行统计"：模型调用次数/总耗时/输出规模（按角色分列；OpenAI 响应带 usage 时含 token 数）——可用于成本评估。
+- 资产验收新增图片规则：`file_magic`（PNG/JPEG/JSON/hex 文件头）与 `image_dimensions`（零依赖解析真实宽高，可设 min/max），详见 `doc/roles.md`。
+
 ## 领域模型
 
 | 对象 | 含义 |

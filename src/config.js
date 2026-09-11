@@ -106,7 +106,16 @@ export function validateConfig(cfg) {
     if (!isValidName(t.id)) errors.push(`workflow.tasks 存在非法 id: ${JSON.stringify(t.id)}`);
     else if (taskIds.has(t.id)) errors.push(`workflow.tasks.id 重复: ${t.id}`);
     taskIds.add(t.id);
-    if (!agentIds.has(t.agentId)) errors.push(`task ${t.id} 引用了未知 agent: ${t.agentId}`);
+    // 执行者：单个 agentId，或 team 团队（同角色多人协作讨论）
+    if (Array.isArray(t.team)) {
+      if (t.team.length < 2) errors.push(`task ${t.id} 的 team 至少需要 2 名成员`);
+      for (const mid of t.team) {
+        if (!agentIds.has(mid)) errors.push(`task ${t.id} 的 team 引用了未知 agent: ${mid}`);
+      }
+      if (t.agentId !== undefined) errors.push(`task ${t.id} 不能同时指定 agentId 与 team（二选一）`);
+    } else if (!agentIds.has(t.agentId)) {
+      errors.push(`task ${t.id} 引用了未知 agent: ${t.agentId}`);
+    }
     if (!RISKS.has(t.risk)) errors.push(`task ${t.id} 的 risk 非法: ${t.risk}`);
     if (!Array.isArray(t.outputs) || t.outputs.length === 0) errors.push(`task ${t.id} 至少需要一个 outputs 产物名`);
     for (const r of t.requires ?? []) if (!taskIds.has(r) && ![...t.requires].includes(r)) {

@@ -85,7 +85,7 @@ export function parseModelOutput(text, { rawActions = false, keepRaw = false } =
           if (typeof a.path !== 'string' || typeof a.content !== 'string') {
             throw new Error('write 动作需要 string 类型的 path 与 content');
           }
-          return { type: 'write', path: normalizePath(a.path), content: a.content };
+          return { type: 'write', path: normalizePath(a.path), content: a.content, encoding: a.encoding ?? 'utf8' };
         }
         if (a?.type === 'exec') {
           if (typeof a.command !== 'string' || !a.command) throw new Error('exec 动作需要非空 command');
@@ -112,11 +112,12 @@ export function applyActions(actions, { workDir = null, commandTimeoutMs = 60000
   const execResults = [];
   for (const action of actions) {
     if (action.type === 'write') {
-      files.push({ path: action.path, content: action.content });
+      const enc = action.encoding ?? 'utf8'; // 资产文件（如 PNG 的 latin1 字节串）按声明编码落盘
+      files.push({ path: action.path, content: action.content, encoding: enc });
       if (workDir) {
         const abs = join(workDir, action.path);
         mkdirSync(requireDir(abs), { recursive: true });
-        writeFileSync(abs, action.content, 'utf8');
+        writeFileSync(abs, action.content, enc);
       }
     } else if (action.type === 'exec') {
       const cwd = action.cwd ? (workDir ? join(workDir, action.cwd) : action.cwd) : workDir;

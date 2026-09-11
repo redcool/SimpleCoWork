@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// CoWork CLI：init / run（--night/--resume）/ serve / status / report / artifacts
-import { resolve, join } from 'node:path';
-import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+// CoWork CLI：init / plan / run（--night/--resume/--plan）/ serve / status / report / artifacts / ship
+import { resolve, join, normalize, relative, isAbsolute } from 'node:path';
+import { existsSync, writeFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { loadConfig } from '../src/config.js';
 import { createProject, NightShiftLog, startPanelServer, runPlanner, normalizePlanTasks, slugOf } from '../src/index.js';
 import { buildReport } from '../src/reporter.js';
@@ -53,6 +54,7 @@ async function main() {
           console.log(`- ${a.id.padEnd(28)} ${a.state.padEnd(10)} 生产者 ${a.producer.padEnd(10)} 文件: ${a.files.map((f) => f.path).join(', ') || '-'}`);
         }
       }); break;
+      case 'ship': shipArtifacts(arg); break;
       default: usage();
     }
   } catch (err) {
@@ -162,6 +164,66 @@ async function readOnly(p, fn) {
   await fn(project);
 }
 
+/** ship：把 .cowork 中已批准（approved）的产物文件写入项目目录并提交到 git 分支（按产物版本从旧到新） */
+function shipArtifacts(p) {
+  const dir = dirOf(p ?? '.');
+  loadDotEnv(dir);
+  const stateFile = join(storeOf(dir), 'state.json');
+  if (!existsSync(stateFile)) throw new Error('该目录尚未运行过（缺少 .cowork/state.json），请先执行 node bin/cowork.js run <dir>');
+  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  const artifacts = (state.artifacts ?? []).filter((a) => a.state === 'approved');
+  if (artifacts.length === 0) throw new Error('没有已批准的产物可提交');
+
+  // 校验路径不越界（禁止 .. 逃逸到项目目录外），落到项目目录
+  const written = [];
+  for (const a of artifacts) {
+    for (const f of (a.files ?? [])) {
+      const abs = resolve(dir, f.path);
+      const rel = relative(dir, abs);
+      if (rel.startsWith('..') || isAbsolute(rel)) {
+        throw new Error(`产物 ${a.id} 的文件路径越界: ${f.path}`);
+      }
+      mkdirSync(requireDir(abs), { recursive: true });
+      writeFileSync(abs, String(f.content ?? ''), f.encoding ?? 'utf8');
+      written.push(f.path);
+    }
+  }
+
+  // git 提交（--branch 可指定分支，默认当前分支）
+  const rev = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], { stdio: 'ignore' });
+  if (rev.status !== 0) throw new Error(`${dir} 不是 git 仓库（或用 git init 初始化后重试）`);
+  const branchArg = process.argv.find((a) => a.startsWith('--branch='));
+  const branch = branchArg ? branchArg.split('=')[1] : null;
+  if (branch) {
+    const co = spawnSync('git', ['-C', dir, 'checkout', '-B', branch], { stdio: 'inherit' });
+    if (co.status !== 0) throw new Error('切换分支失败');
+  }
+  const paths = written.map((w) => relative(dir, resolve(dir, w)).replace(/\\/g, '/'));
+  const add = spawnSync('git', ['-C', dir, 'add', '--', ...paths], { stdio: 'inherit' });
+  if (add.status !== 0) throw new Error('git add 失败');
+  const names = artifacts.map((a) => a.id).join(', ');
+  const msg = `cowork ship: ${state.project?.name ?? dir}（${names}）`;
+  const commit = spawnSync('git', ['-C', dir, 'commit', '-m', msg], { stdio: 'inherit' });
+  if (commit.status !== 0) {
+    console.log('\nℹ 无变更可提交（产物与已提交内容一致），产物已写入工作区。');
+    return;
+  }
+  const head = spawnSync('git', ['-C', dir, 'rev-parse', '--short', 'HEAD'], { stdio: 'inherit' });
+  void head;
+  console.log(`\n✔ 已提交 ${written.length} 个文件（${artifacts.length} 个产物）到 git${branch ? ` 分支 ${branch}` : ''}。`);
+  console.log('  提交信息:', msg);
+  return { artifacts: artifacts.length, filesWritten: written.length };
+}
+
+function sep() {
+  return process.platform === 'win32' ? '\\' : '/';
+}
+
+function requireDir(filePath) {
+  const idx = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  return idx <= 0 ? '.' : filePath.slice(0, idx);
+}
+
 function usage() {
   console.log(`CoWork — 多 Agent 协作系统
 
@@ -176,13 +238,15 @@ function usage() {
   node bin/cowork.js status [dir]                  查看任务/状态概览
   node bin/cowork.js report [dir]                  生成并打印汇报（读历史状态）
   node bin/cowork.js artifacts [dir]               列出全部产物版本
+  node bin/cowork.js ship [dir] [--branch=名]      把已批准产物写入项目目录并提交到 git 分支（交付/隔离）
 
 示例:
   node bin/cowork.js run examples/demo
   node bin/cowork.js run examples/demo --night     # 夜班模式：问题自动开会讨论并写 night-shift/ 文档
   node bin/cowork.js plan examples/demo "做一个天气查询网站"   # 生成计划
   node bin/cowork.js run examples/demo --plan=plan/做一个天气查询网站/plan.json  # 执行计划
-  node bin/cowork.js serve examples/demo           # 打开 http://127.0.0.1:8765 审批 / 查看夜班记录`);
+  node bin/cowork.js serve examples/demo           # 打开 http://127.0.0.1:8765 审批 / 查看夜班记录
+  node bin/cowork.js ship examples/demo --branch=release/v1  # 把已批准产物提交到 git 分支`);
 }
 
 const TEMPLATE = `// CoWork 项目配置模板

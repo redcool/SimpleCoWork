@@ -8,7 +8,13 @@ export function checksum(content) {
 }
 
 /** 仅对"内容类"规则生效：规则声明 ifPresent 时，产物不含该文件则跳过判定 */
-const CONTENT_RULES = new Set(['contains', 'not_contains', 'regex', 'js_syntax', 'min_size', 'json_valid']);
+const CONTENT_RULES = new Set([
+  'contains', 'not_contains', 'regex', 'js_syntax', 'min_size', 'json_valid', 'file_magic', 'image_dimensions',
+]);
+
+const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const JPEG_SIG = Buffer.from([0xff, 0xd8, 0xff]);
+const fileBuf = (file) => Buffer.from(String(file?.content ?? ''), 'latin1'); // 资产文件按字节存储（binary 字符串）
 
 /** 单个规则求值：返回 { ruleId, description, severity, check, passed, detail, applicable } */
 export function evaluateRule(rule, fileMap) {
@@ -78,6 +84,70 @@ export function evaluateRule(rule, fileMap) {
         }
         res.passed = ok;
         res.detail = ok ? `${rule.file} 是合法 JSON` : `${rule.file} 不是合法 JSON`;
+        break;
+      }
+      case 'file_magic': {
+        // 文件头魔数校验：rule.magic 为十六进制前缀，或 rule.mime 取 png/jpeg/json
+        res.passed = false;
+        if (rule.magic) {
+          try {
+            const want = Buffer.from(String(rule.magic).replace(/\s+/g, ''), 'hex');
+            const have = file ? fileBuf(file) : null;
+            res.passed = !!have && have.length >= want.length
+              && Buffer.compare(have.subarray(0, want.length), want) === 0;
+            res.detail = res.passed ? `${rule.file} 文件头匹配 0x${rule.magic}` : `${rule.file} 文件头不匹配 0x${rule.magic}（可能是改名/占位文件）`;
+          } catch {
+            res.detail = `${rule.file} 的 file_magic.magic 不是合法十六进制`;
+          }
+        } else if (rule.mime === 'png') {
+          const have = file ? fileBuf(file) : null;
+          res.passed = !!have && have.length >= PNG_SIG.length && Buffer.compare(have.subarray(0, PNG_SIG.length), PNG_SIG) === 0;
+          res.detail = res.passed ? `${rule.file} 是 PNG 图片（文件头匹配）` : `${rule.file} 不是 PNG 图片（文件头不匹配）`;
+        } else if (rule.mime === 'jpeg') {
+          const have = file ? fileBuf(file) : null;
+          res.passed = !!have && have.length >= JPEG_SIG.length && Buffer.compare(have.subarray(0, JPEG_SIG.length), JPEG_SIG) === 0;
+          res.detail = res.passed ? `${rule.file} 是 JPEG 图片（文件头匹配）` : `${rule.file} 不是 JPEG 图片（文件头不匹配）`;
+        } else if (rule.mime === 'json') {
+          const t = (file?.content ?? '').trimStart();
+          res.passed = t.startsWith('{') || t.startsWith('[');
+          res.detail = res.passed ? `${rule.file} 以 JSON 结构开头` : `${rule.file} 不是 JSON 结构`;
+        } else {
+          res.detail = `${rule.file} 的 file_magic 需要 magic 或 mime(png/jpeg/json)`;
+        }
+        break;
+      }
+      case 'image_dimensions': {
+        // 零依赖解析 PNG(IHDR) / JPEG(SOF) 宽高，校验 min/max 边界
+        const fmt = rule.format || 'png';
+        const minW = rule.minWidth ?? 0;
+        const minH = rule.minHeight ?? 0;
+        const maxW = rule.maxWidth ?? Number.MAX_SAFE_INTEGER;
+        const maxH = rule.maxHeight ?? Number.MAX_SAFE_INTEGER;
+        let w = null;
+        let h = null;
+        if (file) {
+          const buf = fileBuf(file);
+          if (fmt === 'png' && buf.length >= 24 && Buffer.compare(buf.subarray(0, PNG_SIG.length), PNG_SIG) === 0) {
+            w = buf.readUInt32BE(16);
+            h = buf.readUInt32BE(20);
+          } else if (fmt === 'jpeg' && buf.length >= 4 && Buffer.compare(buf.subarray(0, JPEG_SIG.length), JPEG_SIG) === 0) {
+            let i = 2;
+            while (i + 9 < buf.length) {
+              if (buf[i] !== 0xff) { i += 1; continue; }
+              const marker = buf[i + 1];
+              if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+                h = buf.readUInt16BE(i + 5);
+                w = buf.readUInt16BE(i + 7);
+                break;
+              }
+              i += 2 + buf.readUInt16BE(i + 2);
+            }
+          }
+        }
+        res.passed = w !== null && h !== null && w >= minW && h >= minH && w <= maxW && h <= maxH;
+        res.detail = res.passed
+          ? `${rule.file} 尺寸 ${w}×${h} 满足 [${minW}-${maxW}]×[${minH}-${maxH}]`
+          : `${rule.file} ${w && h ? `尺寸 ${w}×${h} 不满足 [${minW}-${maxW}]×[${minH}-${maxH}]` : '无法解析尺寸（非 ' + fmt + ' 图片）'}`;
         break;
       }
       default:

@@ -13,6 +13,7 @@
   `examples/demo` 实测跑通 4 条 CLI 链路：`run`（质量门→会议→补救→完成）、`run --night`（自动开会 + 夜班文档）、
   `plan + run --plan`（主题→模块 DAG→开发→验收→完成）、`serve`（面板 API）+ 人工审批 + `run --resume`（续跑闭环）。
 - 第三阶段（P13 工作室模式）：**76/76 测试通过**；`examples/game-studio-demo` 实跑（制作人→策划→美术/程序并行→QA/艺术总监分级审查→导演汇报 + 冲突会议裁决闭环）。
+- 第四阶段（P14–P15 团队与增强）：**79/79 测试通过**；团队任务（同角色多 agent 讨论择优）落地；图片资产规则、运行统计、`cowork ship` git 交付、`doc/roles.md` 完成；demo 扩至 7 任务（策划 2 人团队 + writer/audio）。
 
 ## 二、需求覆盖矩阵（对照用户原始需求）
 
@@ -28,6 +29,8 @@
 | 8 | 夜班静默工作 | `engine.nightShift{enabled,timezone,ranges}`：时段内问题不阻塞，自动开会并生成夜班文档；`--night` 强制；时钟可注入 | nightshift.test（边界/跨天/时区/集成 10 例）、demo --night 文档实测 |
 | 9 | 可复用于各类 agent coder（如 dsh）：给主题即开工 | `cowork plan <dir> "主题"`：planner agent 拆解模块 DAG → `plan.json`/`plan.md` → `run --plan` 执行（模块/角色/依赖/验收/规则全自动） | planner.test（6 例）、demo plan→run 实测 |
 | 10 | 角色划分以工作室视角合理（游戏/作品） | 自定角色白名单放开 + reviewer `accepts` 按产物匹配 + 资产规则（min_size/json_valid）+ exec outFile 证据回读 | studio.test（5 例）、game-studio-demo CLI 实跑 |
+| 11 | 同类角色可分工协作、互动讨论找最优解 | `task.team` 团队任务：并行产出→互评（打分/互选/改进）→择优→胜出者整合提交；产物 meta.team 留痕 | studio.test（team 校验/择优 2 例）、demo 策划 2 人团队 |
+| 12 | 交付/成本/审计可观测 | `cowork ship`（已批准产物写盘+git 分支提交）、报告"运行统计"（次数/耗时/输出/token）、图片资产机检（file_magic/image_dimensions） | ship 冒烟、demo e2e 统计断言、oracle 图片规则用例 |
 
 ## 三、模块清单与测试覆盖
 
@@ -50,9 +53,9 @@
 | CLI | bin/cowork.js | init/plan/run(--night/--resume/--plan)/serve/status/report/artifacts | 实跑 4 条链路 |
 | 集成 | test/*.test.js | 全流程 + 持久化回放 + 闭环 | 71 例全部通过 |
 
-共 **76 个测试，全部通过**；`node --check` 全部 JS 文件零语法错误。
+共 **79 个测试，全部通过**；`node --check` 全部 JS 文件零语法错误。
 
-工作室模式新增/改动：`src/config.js`（角色白名单放开 + accepts 校验）、`src/engine.js`（#reviewerFor 语义化：accepts 精确匹配→通用兜底、评审者不自审、架构/规划设计产物内建门自审）、`src/oracle.js`（min_size/json_valid 内容类规则）、`src/runner.js`（exec outFile 回读为产物证据）、`examples/game-studio-demo/`（P13 演示）、`test/studio.test.js`（5 例）。
+第四阶段（P14/P15）新增/改动：`src/config.js`（task.team 校验）、`src/engine.js`（#runTeamTask 团队流程 + #callProvider 统计 + #reviewerFor 团队适配）、`src/domain/tasks.js`（team 字段）、`src/runner.js`（write encoding）、`src/oracle.js`（file_magic/image_dimensions）、`src/reporter.js`（团队单元格 + 运行统计）、`bin/cowork.js`（ship 命令）、`doc/roles.md`、`examples/game-studio-demo`（团队+writer/audio+图片规则）、`test/studio.test.js`（+3 例）。
 
 ## 四、端到端实测记录（examples/demo）
 
@@ -82,6 +85,13 @@
 - 美术 v2 重画通过 → **艺术总监**审查（accepts:['art']）；程序产物由 **QA** 审查（accepts:['code']）+ `node --check` 证据经 exec outFile 回读进产物 ✔
 - 导演汇报 report-v1 → completed 5/5 ✔
 
+### 4.7 团队任务与增强（game-studio-demo v2，P14–P15）
+- **策划团队 2 人**（资深+数值）：并行产出 → 互评（双方一致选资深）→ 资深整合数值曲线为最终 GDD；报告显示 `designer-senior+designer-numeric（胜出 designer-senior）`，产物 meta.team 完整 ✔
+- 新增 writer/audio 角色与任务（7 任务）；质量门含图片规则（ART2 file_magic PNG、ART3 image_dimensions ≥32×32）✔
+- 美术 v1 仍触犯 ART1 → 会议裁决 → v2 通过（7/7 completed）；评审按产物匹配：art→艺术总监、code→QA、其余通用兜底 ✔
+- 报告附"运行统计"：19 次模型调用、按角色分列（game-designer 5 次=2 产出+2 互评+1 整合）✔
+- `ship --branch=release/v1`：临时 git 仓库提交 9 文件/7 产物，含 art/hero.png（latin1 字节还原）✔
+
 ### 4.6 真实模型（agnes，P8）
 - `agnes-2.5-flash` → `apihub.agnes-ai.com/v1` 键控连通（12.6s 一次生成）✔
 - `examples/agnes-demo` 使用真实模型完整跑通：架构→双开发→质量门→审核→汇报，**4/4 approved，100%**（一键通过、无需会议）✔
@@ -97,22 +107,24 @@
 
 ## 六、人工验收清单（请用户核对）
 
-- [ ] `node --test "test/*.test.js"` 输出 76/76 通过
+- [ ] `node --test "test/*.test.js"` 输出 79/79 通过
 - [ ] `node bin/cowork.js run examples/demo` 最终状态 completed（100%，4/4）
-- [ ] `node bin/cowork.js run examples/game-studio-demo`：制作人→策划→美术/程序→QA/艺术总监分级审查→导演汇报，含会议 m-1 裁决（美术 v1 拦截→v2 通过）
+- [ ] `node bin/cowork.js run examples/game-studio-demo`：策划团队讨论择优 + 美术/程序/叙事/音频 + QA/艺术总监分级审查 + 导演汇报；含会议 m-1 裁决（美术 v1 拦截→v2 通过）；报告末尾见"运行统计"
 - [ ] `node bin/cowork.js run examples/demo --night` 后查看 `examples/demo/night-shift/*.md`（问题/分析过程/决定 三段格式）
 - [ ] `node bin/cowork.js plan examples/demo "你的主题"` → `run --plan=plan/<主题>/plan.json` 一键开工并 completed
 - [ ] `node bin/cowork.js serve examples/demo` → 浏览器 http://127.0.0.1:8765 查看面板与夜班记录
 - [ ] `node bin/cowork.js run examples/agnes-demo` 用真实 agnes-2.5-flash 跑通（4/4；消耗少量免费额度）
-- [ ] 自定义角色试用：在 config.agents 增加 `{ id:'writer', role:'writer', ... }`（prompt 里约定职责）与对应任务即可扩展工作室
+- [ ] `node bin/cowork.js ship examples/game-studio-demo --branch=release/v1` 把已批准产物提交到 git 分支
+- [ ] 自定义角色试用：设计新角色（producer/game-designer/artist/writer/audio/…）或多 agent 团队（task.team）按 `doc/roles.md` 扩展
 
 ## 七、如何复现
 
 ```bash
 cd H:\ai_works\CoWorkPrj
-node --test "test/*.test.js"                  # 全量测试（76 例）
+node --test "test/*.test.js"                  # 全量测试（79 例）
 node bin/cowork.js run examples/demo          # 白天闭环
-node bin/cowork.js run examples/game-studio-demo  # 工作室模式（冲突会议裁决 + 分级审查）
+node bin/cowork.js run examples/game-studio-demo  # 工作室 v2：团队讨论 + 分级审查 + 冲突会议
+node bin/cowork.js ship examples/game-studio-demo --branch=release/v1  # 交付：approved 产物提交到 git 分支
 node bin/cowork.js run examples/demo --night  # 夜班：自动开会 + night-shift/ 文档
 node bin/cowork.js run examples/agnes-demo    # 真实模型（agnes-2.5-flash）端到端
 node bin/cowork.js plan examples/demo "做一个天气查询"          # 主题规划

@@ -28,6 +28,7 @@ export class TaskStore {
       id: def.id,
       name: def.name,
       agentId: def.agentId,
+      team: def.team ? [...def.team] : null, // 团队任务：同角色多 agent 协作（讨论择优）
       requires: [...(def.requires ?? [])],
       inputs: [...(def.inputs ?? [])],
       outputs: [...(def.outputs ?? [])],
