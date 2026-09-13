@@ -1,0 +1,7 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { openStudioDb, closeStudioDb, StudioEventLog, StudioVersionStore, StageGateStore, ApprovalStore } from "../src/studio/index.js";
+test("stage gate requires previous approval and records user approval",()=>{const root=mkdtempSync(join(tmpdir(),"studio-gate-"));const db=openStudioDb(join(root,".cowork","project.db"));const log=new StudioEventLog(join(root,".cowork","events.jsonl"));const vstore=new StudioVersionStore({db,eventLog:log,projectRoot:root});const p=vstore.createProject({name:"x"});const v=vstore.createVersion({projectId:p.id,version:"0.1.0.0"});const gates=new StageGateStore({db,eventLog:log});assert.equal(gates.start(v.id,"planning").status,"active");gates.transition(v.id,"planning","reviewing");gates.transition(v.id,"planning","user_pending");gates.transition(v.id,"planning","approved");assert.equal(gates.start(v.id,"design").status,"active");const approvals=new ApprovalStore({db,eventLog:log});assert.equal(approvals.decide({versionId:v.id,approverType:"user",decision:"approved"}).decision,"approved");closeStudioDb(db);});
