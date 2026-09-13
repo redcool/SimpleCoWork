@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export function openStudioDb(path) {
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
