@@ -5,3 +5,5 @@ export * from "./stages.js";
 export * from "./approvals.js";
 export * from "./artifacts.js";
 export * from "./bugs.js";
+export * from "./changes.js";
+export * from "./manifest.js";
