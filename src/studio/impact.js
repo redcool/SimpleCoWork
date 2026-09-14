@@ -1,0 +1,8 @@
+export class StudioImpactAnalyzer {
+  constructor({db,eventLog}){this.db=db;this.events=eventLog;}
+  addDependency({artifactId,dependsOnArtifactId,relation="requires"}){if(artifactId===dependsOnArtifactId)throw new Error("Artifact 不能依赖自身");this.db.prepare("INSERT INTO artifact_dependencies(artifact_id,depends_on_artifact_id,relation) VALUES(?,?,?)").run(artifactId,dependsOnArtifactId,relation);this.events?.append("artifact.dependency.added",{artifactId,dependsOnArtifactId,relation});}
+  dependenciesOf(id){return this.db.prepare("SELECT a.*,d.relation FROM artifact_dependencies d JOIN artifacts a ON a.id=d.depends_on_artifact_id WHERE d.artifact_id=?").all(id);}
+  downstreamOf(id){return this.db.prepare("SELECT a.*,d.relation FROM artifact_dependencies d JOIN artifacts a ON a.id=d.artifact_id WHERE d.depends_on_artifact_id=?").all(id);}
+  analyze(artifactId){const seen=new Set();const queue=[artifactId];const impacted=[];while(queue.length){const id=queue.shift();for(const a of this.downstreamOf(id)){if(seen.has(a.id))continue;seen.add(a.id);impacted.push(a);queue.push(a.id);}}this.events?.append("impact.analyzed",{artifactId,impacted:impacted.map(a=>a.id)});return impacted;}
+  markDownstreamStale(artifactId,reason="dependency changed"){const impacted=this.analyze(artifactId);for(const a of impacted)this.db.prepare("UPDATE artifacts SET state=? WHERE id=? AND state NOT IN ('deprecated','superseded')").run("stale",a.id);this.events?.append("impact.applied",{artifactId,count:impacted.length,reason});return impacted;}
+}

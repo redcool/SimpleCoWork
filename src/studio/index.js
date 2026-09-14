@@ -7,3 +7,5 @@ export * from "./artifacts.js";
 export * from "./bugs.js";
 export * from "./changes.js";
 export * from "./manifest.js";
+export * from "./impact.js";
+export * from "./documents.js";

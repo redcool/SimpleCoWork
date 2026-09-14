@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { openStudioDb, closeStudioDb, StudioEventLog, StudioVersionStore } from "../src/studio/index.js";
+import { openStudioDb, closeStudioDb, StudioEventLog, StudioVersionStore, StageGateStore } from "../src/studio/index.js";
 const [, , command, projectArg, value] = process.argv;
 const root=resolve(projectArg||".");
 const dbPath=join(root,".cowork","project.db");
@@ -9,6 +9,10 @@ function runtime(){const db=openStudioDb(dbPath);const log=new StudioEventLog(jo
 try {
   if(command==="init"){const r=runtime();const p=r.store.createProject({name:value||root.split(/[\\/]/).pop()});console.log(JSON.stringify(p,null,2));closeStudioDb(r.db);}
   else if(command==="version" && value){const r=runtime();const p=r.db.prepare("SELECT id FROM projects LIMIT 1").get();if(!p)throw new Error("请先 studio init <dir>");const v=r.store.createVersion({projectId:p.id,version:value});console.log(JSON.stringify(v,null,2));closeStudioDb(r.db);}
+  else if(command==="stage" && value){const r=runtime();const gates=new StageGateStore({db:r.db,eventLog:r.log});const [versionId,stageKey,action="start"]=value.split(":");const out=action==="start"?gates.start(versionId,stageKey):gates.transition(versionId,stageKey,action);console.log(JSON.stringify(out,null,2));closeStudioDb(r.db);}
+  else if(command==="approve-version" && value){const r=runtime();console.log(JSON.stringify(r.store.approve(value),null,2));closeStudioDb(r.db);}
+  else if(command==="seal" && value){const r=runtime();console.log(JSON.stringify(r.store.seal(value),null,2));closeStudioDb(r.db);}
+  else if(command==="fork" && value){const r=runtime();const [baseId,version]=value.split(":");console.log(JSON.stringify(r.store.forkVersion({baseVersionId:baseId,version}),null,2));closeStudioDb(r.db);}
   else if(command==="status"){const r=runtime();console.log(JSON.stringify(r.db.prepare("SELECT * FROM versions ORDER BY rowid").all(),null,2));closeStudioDb(r.db);}
-  else { console.log(["studio init <dir> [name]", "studio version <dir> <x.y.z.w>", "studio status <dir>"].join("\n")); process.exitCode=2; }
+  else { console.log(["studio init <dir> [name]", "studio version <dir> <x.y.z.w>", "studio status <dir>", "studio stage <dir> <versionId:stage:action>", "studio approve-version <dir> <versionId>", "studio seal <dir> <versionId>", "studio fork <dir> <baseVersionId:version>"].join("\n")); process.exitCode=2; }
 } catch(err){console.error(`[studio] ${err.message}`);process.exitCode=1;}

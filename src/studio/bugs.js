@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
+const STATUSES=["open","triaged","in-progress","fixed","verified","closed","wont-fix"];
 export class StudioBugStore {
   constructor({db,eventLog}){this.db=db;this.events=eventLog;}
   create({versionId,title,severity="medium",priority="P2"}){const id=randomUUID();this.db.prepare("INSERT INTO bugs(id,version_id,title,severity,priority,status) VALUES(?,?,?,?,?,?)").run(id,versionId,title,severity,priority,"open");this.events?.append("bug.created",{id,versionId,title});return this.get(id);}
   get(id){const b=this.db.prepare("SELECT * FROM bugs WHERE id=?").get(id);if(!b)throw new Error("未知 Bug");return b;}
-  route({bugId,targetStage,impactType="implementation",requiresUserApproval=false,artifactId=null}){this.get(bugId);this.db.prepare("INSERT INTO bug_impacts(bug_id,artifact_id,target_stage,impact_type,requires_user_approval) VALUES(?,?,?,?,?)").run(bugId,artifactId,targetStage,impactType,requiresUserApproval?1:0);this.db.prepare("UPDATE bugs SET status=? WHERE id=?").run("triaged",bugId);this.events?.append("bug.routed",{bugId,targetStage,artifactId});return this.get(bugId);}
+  route({bugId,targetStage,impactType="implementation",requiresUserApproval=false,artifactId=null}){this.get(bugId);this.db.prepare("INSERT INTO bug_impacts(bug_id,artifact_id,target_stage,impact_type,requires_user_approval) VALUES(?,?,?,?,?)").run(bugId,artifactId,targetStage,impactType,requiresUserApproval?1:0);return this.transition(bugId,"triaged");}
+  transition(id,to){const b=this.get(id);if(!STATUSES.includes(to))throw new Error("非法 Bug 状态");const allowed={open:["triaged","wont-fix"],triaged:["in-progress","wont-fix"],"in-progress":["fixed","wont-fix"],fixed:["verified","in-progress"],verified:["closed","in-progress"],closed:[],"wont-fix":[]};if(!allowed[b.status]?.includes(to))throw new Error("非法 Bug 状态迁移 "+b.status+" -> "+to);this.db.prepare("UPDATE bugs SET status=? WHERE id=?").run(to,id);this.events?.append("bug."+to,{bugId:id});return this.get(id);}
+  linkRegression({bugId,testArtifactId}){this.get(bugId);this.db.prepare("INSERT INTO artifact_dependencies(artifact_id,depends_on_artifact_id,relation) VALUES(?,?,?)").run(testArtifactId,bugId,"regression-for");this.events?.append("bug.regression.linked",{bugId,testArtifactId});return this.get(bugId);}
 }
