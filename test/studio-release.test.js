@@ -1,0 +1,7 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, existsSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { openStudioDb,closeStudioDb,StudioEventLog,StudioVersionStore,StageGateStore,StudioArtifactStore } from "../src/studio/index.js";
+test("seals complete version and forks workspace",()=>{const root=mkdtempSync(join(tmpdir(),"studio-release-"));const db=openStudioDb(join(root,".cowork","project.db"));const log=new StudioEventLog(join(root,".cowork","events.jsonl"));const vs=new StudioVersionStore({db,eventLog:log,projectRoot:root});const p=vs.createProject({name:"x"});const v=vs.createVersion({projectId:p.id,version:"0.1.0.0"});const gates=new StageGateStore({db,eventLog:log});for(const key of ["planning","design","asset-spec","production","playable"]){gates.start(v.id,key);gates.transition(v.id,key,"reviewing");gates.transition(v.id,key,"approved");}const a=new StudioArtifactStore({db,eventLog:log});a.create({versionId:v.id,type:"document",name:"gdd",state:"approved",checksum:"x"});vs.approve(v.id);const rel=vs.seal(v.id);assert.equal(rel.status,"released");assert.ok(existsSync(join(rel.release_path,"manifest.json")));const next=vs.forkVersion({baseVersionId:v.id,version:"0.1.1.0"});assert.ok(existsSync(join(next.workspace_path,"documents")));assert.equal(next.base_version_id,v.id);closeStudioDb(db);});
