@@ -1,0 +1,13 @@
+import { randomUUID } from "node:crypto";
+const TASK_STATES=["pending","ready","running","submitted","approved","needs_revision","failed","cancelled"];
+const ALLOWED={pending:["ready","cancelled"],ready:["running","cancelled"],running:["submitted","failed","cancelled"],submitted:["approved","needs_revision","failed","cancelled"],approved:[],needs_revision:["ready","failed","cancelled"],failed:["ready","cancelled"],cancelled:[]};
+export class StudioTaskStore {
+  constructor({db,eventLog}){this.db=db;this.events=eventLog;}
+  create({versionId,stageKey,name,agentRole,taskType="document",format="md",outputName=name,acceptance=[]}){const id=randomUUID();const ts=new Date().toISOString();this.db.prepare("INSERT INTO studio_tasks(id,version_id,stage_key,name,agent_role,task_type,status,format,output_name,acceptance,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)").run(id,versionId,stageKey,name,agentRole,taskType,"pending",format,outputName,JSON.stringify(acceptance),ts,ts);this.events?.append("studio.task.created",{taskId:id,versionId,stageKey,name});return this.get(id);}
+  get(id){const t=this.db.prepare("SELECT * FROM studio_tasks WHERE id=?").get(id);if(!t)throw new Error("未知 Studio 任务");return {...t,versionId:t.version_id,stageKey:t.stage_key,agentRole:t.agent_role,taskType:t.task_type,outputName:t.output_name,acceptance:JSON.parse(t.acceptance||"[]")};}
+  list(versionId){return this.db.prepare("SELECT * FROM studio_tasks WHERE version_id=? ORDER BY created_at").all(versionId).map(t=>({...t,versionId:t.version_id,stageKey:t.stage_key,agentRole:t.agent_role,taskType:t.task_type,outputName:t.output_name,acceptance:JSON.parse(t.acceptance||"[]")}));}
+  addDependency({taskId,dependsOnTaskId}){if(taskId===dependsOnTaskId)throw new Error("任务不能依赖自身");this.db.prepare("INSERT INTO studio_task_dependencies(task_id,depends_on_task_id) VALUES(?,?)").run(taskId,dependsOnTaskId);this.events?.append("studio.task.dependency.added",{taskId,dependsOnTaskId});}
+  dependenciesDone(id){const rows=this.db.prepare("SELECT t.status FROM studio_task_dependencies d JOIN studio_tasks t ON t.id=d.depends_on_task_id WHERE d.task_id=?").all(id);return rows.every(r=>r.status==="approved");}
+  ready(versionId){return this.list(versionId).filter(t=>t.status==="pending"&&this.dependenciesDone(t.id));}
+  transition(id,to,meta={}){const t=this.get(id);if(!TASK_STATES.includes(to)||!ALLOWED[t.status]?.includes(to))throw new Error(`非法 Studio 任务迁移: ${t.status} -> ${to}`);const ts=new Date().toISOString();this.db.prepare("UPDATE studio_tasks SET status=?,updated_at=? WHERE id=?").run(to,ts,id);this.events?.append("studio.task."+to,{taskId:id,...meta});return this.get(id);}
+}

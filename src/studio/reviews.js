@@ -1,0 +1,7 @@
+import { randomUUID as uuid } from "node:crypto";
+export class StudioReviewStore {
+  constructor({db,eventLog}){this.db=db;this.events=eventLog;}
+  review({versionId,artifactId,reviewer,decision,issues=[]}){if(!["approved","requested_changes","rejected"].includes(decision))throw new Error("非法审查决定");const id=uuid();const ts=new Date().toISOString();this.db.prepare("INSERT INTO studio_reviews(id,version_id,artifact_id,reviewer,decision,issues,created_at) VALUES(?,?,?,?,?,?,?)").run(id,versionId,artifactId,reviewer,decision,JSON.stringify(issues),ts);const state=decision==="approved"?"approved":decision==="rejected"?"rejected":"needs_revision";this.db.prepare("UPDATE artifacts SET state=? WHERE id=?").run(state,artifactId);this.events?.append("studio.review."+decision,{reviewId:id,versionId,artifactId,reviewer,issues});return this.get(id);}
+  get(id){const r=this.db.prepare("SELECT * FROM studio_reviews WHERE id=?").get(id);if(!r)throw new Error("未知审查");return {...r,issues:JSON.parse(r.issues||"[]")};}
+  listForArtifact(artifactId){return this.db.prepare("SELECT * FROM studio_reviews WHERE artifact_id=? ORDER BY created_at").all(artifactId).map(r=>({...r,issues:JSON.parse(r.issues||"[]")}));}
+}

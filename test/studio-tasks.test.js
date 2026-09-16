@@ -1,0 +1,31 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { openStudioDb,closeStudioDb,StudioVersionStore,StudioArtifactStore,StudioDocumentStore,StudioDocumentRunner,StudioTaskStore,StudioReviewStore,StudioScheduler } from "../src/studio/index.js";
+import { createMockProvider } from "../src/providers/mock.js";
+
+test("Studio tasks run by dependency and reviewer approval", async () => {
+  const root = mkdtempSync(join(tmpdir(), "studio-task-"));
+  const db = openStudioDb(join(root, ".cowork", "project.db"));
+  const versions = new StudioVersionStore({ db, projectRoot: root });
+  const project = versions.createProject({ name: "tasks" });
+  const version = versions.createVersion({ projectId: project.id, version: "0.1.1.0" });
+  const tasks = new StudioTaskStore({ db });
+  const first = tasks.create({ versionId: version.id, stageKey: "planning", name: "plan", agentRole: "manager", outputName: "plan" });
+  const second = tasks.create({ versionId: version.id, stageKey: "design", name: "design", agentRole: "designer", outputName: "design" });
+  tasks.addDependency({ taskId: second.id, dependsOnTaskId: first.id });
+  assert.deepEqual(tasks.ready(version.id).map(t => t.id), [first.id]);
+  const docs = new StudioDocumentStore({ db, workspacePath: version.workspace_path });
+  const artifacts = new StudioArtifactStore({ db });
+  const runner = new StudioDocumentRunner({ provider: createMockProvider({ script: { default: () => ({ summary: "ok", content: "# output", done: true }) } }), documentStore: docs, artifactStore: artifacts });
+  const reviews = new StudioReviewStore({ db });
+  const scheduler = new StudioScheduler({ tasks, runner, artifacts, reviews });
+  const agents = { manager: { id: "manager", role: "manager" }, designer: { id: "designer", role: "designer" } };
+  const result = await scheduler.runReady({ versionId: version.id, agents, reviewer: async () => ({ reviewer: "oracle", decision: "approved" }) });
+  assert.equal(result.length, 1);
+  assert.equal(tasks.get(first.id).status, "approved");
+  assert.equal(tasks.ready(version.id)[0].id, second.id);
+  closeStudioDb(db);
+});

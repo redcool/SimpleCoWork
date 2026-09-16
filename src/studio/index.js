@@ -10,3 +10,6 @@ export * from "./manifest.js";
 export * from "./impact.js";
 export * from "./documents.js";
 export * from "./runner.js";
+export * from "./tasks.js";
+export * from "./reviews.js";
+export * from "./scheduler.js";
