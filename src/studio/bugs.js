@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 const STATUSES=["open","triaged","in-progress","fixed","verified","closed","wont-fix"];
 export class StudioBugStore {
-  constructor({db,eventLog}){this.db=db;this.events=eventLog;}
+  constructor({db,eventLog,tasks=null}){this.db=db;this.events=eventLog;this.tasks=tasks;}
   create({versionId,title,severity="medium",priority="P2"}){const id=randomUUID();this.db.prepare("INSERT INTO bugs(id,version_id,title,severity,priority,status) VALUES(?,?,?,?,?,?)").run(id,versionId,title,severity,priority,"open");this.events?.append("bug.created",{id,versionId,title});return this.get(id);}
   get(id){const b=this.db.prepare("SELECT * FROM bugs WHERE id=?").get(id);if(!b)throw new Error("未知 Bug");return b;}
   route({bugId,targetStage,impactType="implementation",requiresUserApproval=false,artifactId=null}){this.get(bugId);this.db.prepare("INSERT INTO bug_impacts(bug_id,artifact_id,target_stage,impact_type,requires_user_approval) VALUES(?,?,?,?,?)").run(bugId,artifactId,targetStage,impactType,requiresUserApproval?1:0);return this.transition(bugId,"triaged");}
   transition(id,to){const b=this.get(id);if(!STATUSES.includes(to))throw new Error("非法 Bug 状态");const allowed={open:["triaged","wont-fix"],triaged:["in-progress","wont-fix"],"in-progress":["fixed","wont-fix"],fixed:["verified","in-progress"],verified:["closed","in-progress"],closed:[],"wont-fix":[]};if(!allowed[b.status]?.includes(to))throw new Error("非法 Bug 状态迁移 "+b.status+" -> "+to);this.db.prepare("UPDATE bugs SET status=? WHERE id=?").run(to,id);this.events?.append("bug."+to,{bugId:id});return this.get(id);}
+createFixTask({bugId,stageKey,agentRole="developer",name}){const b=this.get(bugId);if(!this.tasks)throw new Error("未配置 Task Store");const task=this.tasks.create({versionId:b.version_id,stageKey,name:name||`fix-${b.id}`,agentRole,taskType:"document",format:"md",outputName:name||`fix-${b.id}`,acceptance:[`修复 Bug ${b.id}`]});this.transition(bugId,"in-progress");this.events?.append("bug.fix-task.created",{bugId,taskId:task.id});return task;}
   linkRegression({bugId,testArtifactId}){this.get(bugId);this.db.prepare("INSERT INTO artifact_dependencies(artifact_id,depends_on_artifact_id,relation) VALUES(?,?,?)").run(testArtifactId,bugId,"regression-for");this.events?.append("bug.regression.linked",{bugId,testArtifactId});return this.get(bugId);}
 }
