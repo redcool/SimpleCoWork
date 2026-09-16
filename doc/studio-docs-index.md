@@ -6,10 +6,11 @@
 - `studio-js-ts-decision.md`：JavaScript/TypeScript 技术决策。
 - `studio-db-decision.md`：SQLite 与 NoSQL 数据库选型决策。
 - `studio-docs-index.md`：本索引。
+- `审核-2026-09-16.md`：v2 静态审核、问题依据、整改建议与优先级。
 
 ## CoWork v1 冻结文档
 
-以下文档仅用于维护和回溯旧版 CoWork，不能作为 Studio v2 的新需求基线：
+CoWork v1 已冻结，之后不再开发；Studio CoWork v2 是后续唯一开发目标。以下文档仅用于历史回溯，不能作为 Studio v2 的新需求基线：
 
 - `doc/legacy-cowork/PLAN.md`
 - `doc/legacy-cowork/REVIEW.md`
