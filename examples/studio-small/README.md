@@ -252,3 +252,24 @@ examples/studio-small/agents.json
 - [ ] Release 前所有阶段和审批状态可追踪；
 
 三人 Studio 的目标不是让三个 Agent 同时聊天，而是让三个人通过版本化 Artifact 协作。
+
+## 11. 一键离线演示
+
+无需 API Key，可以运行：
+
+```powershell
+node examples/studio-small/run-offline.js
+```
+
+它会在临时目录创建三人 Studio 项目，使用 Mock Provider 执行：
+
+```text
+创建版本
+→ 生成 planning/design 任务
+→ Manager/Developer/Artist 离线生产文档
+→ Reviewer 批准
+→ 用户批准阶段
+→ 输出阶段结果
+```
+
+这个脚本用于验证 Studio 内核，不会修改当前示例目录。
