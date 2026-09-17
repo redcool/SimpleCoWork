@@ -43,5 +43,13 @@
       "developer",
       "artist"
     ]
+  },
+  "providers": {
+    "agnes": {
+      "kind": "agnes",
+      "baseURL": "${AGNES_BASE_URL}",
+      "apiKey": "${AGNES_API_KEY}",
+      "defaultModel": "agnes-3.0-flash"
+    }
   }
 }

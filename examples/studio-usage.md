@@ -116,3 +116,30 @@ studio approve-version <dir> <version-id>
 studio seal <dir> <version-id>
 studio fork <dir> <baseVersionId:version>
 ```
+
+## 6. Provider 配置与试运行
+
+两个 `agents.json` 都包含 `providers.agnes`：
+
+```json
+{
+  "kind": "agnes",
+  "baseURL": "${AGNES_BASE_URL}",
+  "apiKey": "${AGNES_API_KEY}",
+  "defaultModel": "agnes-3.0-flash"
+}
+```
+
+`agnes` 当前通过 OpenAI-compatible Chat Completions 适配。请根据实际 Agnes 网关设置 `AGNES_BASE_URL`；如果网关使用不同协议，应在 Provider 工厂中替换适配器。模型仍可在每个 Agent 上单独修改。
+
+离线模式可把 provider 改为 `mock`，并在代码或测试中注入 mock script。
+
+真实模型试运行前：
+
+```powershell
+$env:AGNES_API_KEY = "你的密钥"
+$env:AGNES_BASE_URL = "你的 Agnes OpenAI-compatible 地址"
+node bin/studio.js status examples/studio-small
+```
+
+当前 CLI 可验证项目、版本、计划和任务；完整真实 LLM 执行入口仍在持续接入中。

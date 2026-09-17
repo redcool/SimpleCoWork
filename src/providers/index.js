@@ -5,6 +5,7 @@ import { createOpenAIProvider } from './openai.js';
 const FACTORIES = {
   mock: createMockProvider,
   openai: createOpenAIProvider,
+  agnes: createOpenAIProvider,
 };
 
 export function createProviderRegistry(providerConfigs = {}) {
