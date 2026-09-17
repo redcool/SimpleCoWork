@@ -273,3 +273,13 @@ node examples/studio-small/run-offline.js
 ```
 
 这个脚本用于验证 Studio 内核，不会修改当前示例目录。
+
+## 12. 临时文件
+
+试用产生的输出、日志和诊断文件统一放在仓库根目录 `tmp/`，不要放到源码目录。
+
+```powershell
+New-Item -ItemType Directory -Force tmp | Out-Null
+$env:STUDIO_TMP_ROOT = "tmp/studio-small-offline"
+node examples/studio-small/run-offline.js
+```

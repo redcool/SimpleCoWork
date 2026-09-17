@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { openStudioDb, closeStudioDb, StudioVersionStore, StudioTaskStore, StudioPlanBuilder, StageGateStore, StudioScheduler, StudioDocumentStore, StudioDocumentRunner, StudioArtifactStore, StudioReviewStore, StudioStageOrchestrator, ApprovalStore } from "../../src/studio/index.js";
 import { createMockProvider } from "../../src/providers/mock.js";
 
-const root=mkdtempSync(join(tmpdir(),"studio-small-offline-"));
+const root=process.env.STUDIO_TMP_ROOT||mkdtempSync(join(tmpdir(),"studio-small-offline-"));
 const db=openStudioDb(join(root,".cowork","project.db"));
 const versions=new StudioVersionStore({db,projectRoot:root});
 const project=versions.createProject({name:"studio-small-offline"});

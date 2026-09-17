@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { join, resolve } from "node:path";
-import { loadStudioConfig } from "../src/studio/config.js";
+import { loadStudioConfig, layerAgent } from "../src/studio/config.js";
 import { existsSync } from "node:fs";
 import { openStudioDb, closeStudioDb, StudioEventLog, StudioVersionStore, StageGateStore, StudioTaskStore, StudioPlanBuilder, StudioBugStore, runStudioLayer } from "../src/studio/index.js";
 const [, , command, projectArg, value, extra] = process.argv;
@@ -21,6 +21,6 @@ try {
   else if(command==="events-export"){const r=runtime();console.log(JSON.stringify({exported:r.log.exportPending(),pending:r.log.reconcile()},null,2));closeStudioDb(r.db);}
   else if(command==="bug-fix" && value){const r=runtime();const [bugId,stageKey,agentRole="developer"]=value.split(":");console.log(JSON.stringify(r.bugs.createFixTask({bugId,stageKey,agentRole}),null,2));closeStudioDb(r.db);}
   else if(command==="status"){const r=runtime();console.log(JSON.stringify(r.db.prepare("SELECT * FROM versions ORDER BY rowid").all(),null,2));closeStudioDb(r.db);}
-  else if(command==="layer" && projectArg && value){const mode=projectArg;const input=value;const output=extra;const configPath=process.env.STUDIO_CONFIG;const config=configPath?loadStudioConfig(configPath):null;const agent=config?.agents?.find(a=>a.role===mode)||config?.agents?.find(a=>a.id===mode);const provider=agent?.providerInstance||null;console.log(JSON.stringify(await runStudioLayer({mode,input,output,provider,system:agent?.prompt}),null,2));}
+  else if(command==="layer" && projectArg && value){const mode=projectArg;const input=value;const output=extra;const configPath=process.env.STUDIO_CONFIG;const config=configPath?loadStudioConfig(configPath):null;const agent=config?.agents?.find(a=>a.role===mode)||config?.agents?.find(a=>a.id===mode);const selected=agent||(config?layerAgent(config,mode):null);const provider=selected?.providerInstance||null;const logPath=process.env.STUDIO_LOG||join(process.cwd(),"tmp","studio-layer.jsonl");console.log(JSON.stringify(await runStudioLayer({mode,input,output,provider,system:selected?.prompt,logPath}),null,2));}
   else { console.log(["studio init <dir> [name]", "studio version <dir> <x.y.z.w>", "studio status <dir>", "studio plan <dir> <version>", "studio stage <dir> <versionId:stage:action>", "studio recover <dir>", "studio events-export <dir>", "studio bug-fix <dir> <bugId:stage:agentRole>", "studio approve-version <dir> <versionId>", "studio seal <dir> <versionId>", "studio fork <dir> <baseVersionId:version>", "studio layer <requirements|engineering|development|qa> <input> <output>", "STUDIO_CONFIG=<agents.json> enables configured Provider"].join("\n")); process.exitCode=2; }
 } catch(err){console.error(`[studio] ${err.message}`);process.exitCode=1;}

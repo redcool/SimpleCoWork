@@ -129,3 +129,28 @@ studio layer <layer> <input> <output>
 ```
 
 `requirements` 的 input 可以是不存在的路径，此时按一句话想法处理；其他层的 input 必须是存在的文件或目录。
+
+## 9. 临时输出和日志
+
+试用时建议把临时输出和日志放入仓库根目录的 `tmp/`：
+
+```powershell
+New-Item -ItemType Directory -Force tmp | Out-Null
+$env:STUDIO_LOG = "tmp/studio-layer.jsonl"
+node bin/studio.js layer requirements "一句话想法" tmp/requirements
+```
+
+`layer-manifest.json` 记录本次运行，JSONL 日志记录：
+
+- layer.started；
+- document.written；
+- document.failed；
+- layer.completed。
+
+真实配置严格检查环境变量：
+
+```powershell
+$env:STUDIO_STRICT_CONFIG = "1"
+```
+
+未设置所需的 `${AGNES_API_KEY}` 或 `${AGNES_BASE_URL}` 时会明确报错。
