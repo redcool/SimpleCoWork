@@ -1,0 +1,116 @@
+{
+  "name": "studio-standard",
+  "description": "标准 Studio CoWork Agent 配置",
+  "version": "0.1.4.0",
+  "providerDefaults": {
+    "provider": "agnes",
+    "model": "agnes-3.0-flash"
+  },
+  "agents": [
+    {
+      "id": "producer",
+      "role": "producer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "统筹需求、版本目标、预算、风险和用户审批。"
+    },
+    {
+      "id": "planner",
+      "role": "planner",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "把需求拆解为阶段计划、任务 DAG 和验收标准。"
+    },
+    {
+      "id": "lead-designer",
+      "role": "designer",
+      "provider": "agnes",
+      "model": "agnes-2.5-flash",
+      "prompt": "负责系统设计、玩法规则、交互和文档一致性。"
+    },
+    {
+      "id": "narrative-designer",
+      "role": "narrative",
+      "provider": "agnes",
+      "model": "agnes-2.5-flash",
+      "prompt": "负责世界观、叙事、角色、对白和剧情文档。"
+    },
+    {
+      "id": "art-director",
+      "role": "art-director",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "负责视觉风格、资产规格、审美规范和美术审核。"
+    },
+    {
+      "id": "technical-designer",
+      "role": "technical-designer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "负责系统落地、数据结构、技术约束和程序接口设计。"
+    },
+    {
+      "id": "developer",
+      "role": "developer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "根据批准的设计和技术规格生成代码、实现说明和测试。"
+    },
+    {
+      "id": "artist",
+      "role": "artist",
+      "provider": "agnes",
+      "model": "agnes-2.5-flash",
+      "prompt": "根据批准的资产规格生产视觉资源和资源说明。"
+    },
+    {
+      "id": "audio-designer",
+      "role": "audio",
+      "provider": "agnes",
+      "model": "agnes-2.5-flash",
+      "prompt": "负责音乐、音效、声音资产规格和音频验收。"
+    },
+    {
+      "id": "qa",
+      "role": "qa",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "负责测试计划、验收证据、回归测试和 Bug 报告。"
+    },
+    {
+      "id": "reviewer",
+      "role": "reviewer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "独立审核 Artifact、依赖、验收标准和风险，不替生产者自审。"
+    }
+  ],
+  "stages": {
+    "planning": [
+      "producer",
+      "planner"
+    ],
+    "design": [
+      "lead-designer",
+      "narrative-designer",
+      "technical-designer",
+      "reviewer"
+    ],
+    "assetSpec": [
+      "art-director",
+      "audio-designer",
+      "reviewer"
+    ],
+    "production": [
+      "developer",
+      "artist",
+      "audio-designer",
+      "reviewer"
+    ],
+    "playable": [
+      "qa",
+      "producer",
+      "reviewer"
+    ]
+  }
+}
