@@ -7,7 +7,7 @@ Studio CoWork 不要求每次都从完整项目流程开始。每一层都可以
 输入可以是一句话想法、粗略需求或一份文本：
 
 ```powershell
-node bin/studio.js layer requirements "想做一个三分钟内完成一局的合作解谜游戏:./out/requirements"
+node bin/studio.js layer requirements "想做一个三分钟内完成一局的合作解谜游戏" ./out/requirements
 ```
 
 产出：
@@ -27,7 +27,7 @@ layer-manifest.json
 把确认后的需求目录交给工程化层：
 
 ```powershell
-node bin/studio.js layer engineering ./out/requirements:./out/engineering
+node bin/studio.js layer engineering ./out/requirements ./out/engineering
 ```
 
 产出：
@@ -47,7 +47,7 @@ layer-manifest.json
 已有代码可以直接交给开发层：
 
 ```powershell
-node bin/studio.js layer development C:/work/my-project:./out/development
+node bin/studio.js layer development C:/work/my-project ./out/development
 ```
 
 开发层产出：
@@ -64,7 +64,7 @@ layer-manifest.json
 ## 4. 独立 QA 层
 
 ```powershell
-node bin/studio.js layer qa C:/work/my-project:./out/qa
+node bin/studio.js layer qa C:/work/my-project ./out/qa
 ```
 
 产出：
@@ -90,3 +90,42 @@ QA 层可以独立用于查 Bug、分析回归风险、性能、安全和功能�
 已有代码 → development → 用户选择变更 → 工程 Task → Reviewer → Release
 已有代码 → qa → Bug/性能/安全报告 → 用户决定是否创建修复 Task
 ```
+
+## 7. Provider 模式
+
+离线模式是默认模式：不发送网络请求，只生成结构化 handoff 文档。
+
+如果要调用真实 Provider，先设置：
+
+```powershell
+$env:STUDIO_CONFIG = "examples/studio-small/agents.json"
+$env:AGNES_API_KEY = "你的 Key"
+$env:AGNES_BASE_URL = "你的 OpenAI-compatible 地址"
+```
+
+然后使用相同命令：
+
+```powershell
+node bin/studio.js layer requirements "一句话想法" ./out/requirements
+```
+
+CLI 会根据层名称选择对应 Agent：
+
+```text
+requirements → role requirements（没有专用时使用配置默认）
+engineering → role engineering
+development → developer
+qa → qa
+```
+
+当前默认仍建议先离线验证。真实 Provider 输出会写入独立输出目录，不会直接修改输入代码。
+
+## 8. 参数格式
+
+统一格式：
+
+```text
+studio layer <layer> <input> <output>
+```
+
+`requirements` 的 input 可以是不存在的路径，此时按一句话想法处理；其他层的 input 必须是存在的文件或目录。
