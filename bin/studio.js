@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
-import { openStudioDb, closeStudioDb, StudioEventLog, StudioVersionStore, StageGateStore, StudioTaskStore, StudioPlanBuilder, StudioBugStore } from "../src/studio/index.js";
-const [, , command, projectArg, value] = process.argv;
+import { openStudioDb, closeStudioDb, StudioEventLog, StudioVersionStore, StageGateStore, StudioTaskStore, StudioPlanBuilder, StudioBugStore, runStudioLayer } from "../src/studio/index.js";
+const [, , command, projectArg, value, extra] = process.argv;
 const root=resolve(projectArg||".");
 const dbPath=join(root,".cowork","project.db");
 function runtime(){const db=openStudioDb(dbPath);const log=new StudioEventLog(join(root,".cowork","events.jsonl"),{db});return {db,log,store:new StudioVersionStore({db,eventLog:log,projectRoot:root}),tasks:new StudioTaskStore({db,eventLog:log}),bugs:new StudioBugStore({db,eventLog:log})};}
@@ -20,5 +20,6 @@ try {
   else if(command==="events-export"){const r=runtime();console.log(JSON.stringify({exported:r.log.exportPending(),pending:r.log.reconcile()},null,2));closeStudioDb(r.db);}
   else if(command==="bug-fix" && value){const r=runtime();const [bugId,stageKey,agentRole="developer"]=value.split(":");console.log(JSON.stringify(r.bugs.createFixTask({bugId,stageKey,agentRole}),null,2));closeStudioDb(r.db);}
   else if(command==="status"){const r=runtime();console.log(JSON.stringify(r.db.prepare("SELECT * FROM versions ORDER BY rowid").all(),null,2));closeStudioDb(r.db);}
-  else { console.log(["studio init <dir> [name]", "studio version <dir> <x.y.z.w>", "studio status <dir>", "studio plan <dir> <version>", "studio stage <dir> <versionId:stage:action>", "studio recover <dir>", "studio events-export <dir>", "studio bug-fix <dir> <bugId:stage:agentRole>", "studio approve-version <dir> <versionId>", "studio seal <dir> <versionId>", "studio fork <dir> <baseVersionId:version>"].join("\n")); process.exitCode=2; }
+  else if(command==="layer" && projectArg && value){const mode=projectArg;const input=value;const output=extra;console.log(JSON.stringify(await runStudioLayer({mode,input,output}),null,2));}
+  else { console.log(["studio init <dir> [name]", "studio version <dir> <x.y.z.w>", "studio status <dir>", "studio plan <dir> <version>", "studio stage <dir> <versionId:stage:action>", "studio recover <dir>", "studio events-export <dir>", "studio bug-fix <dir> <bugId:stage:agentRole>", "studio approve-version <dir> <versionId>", "studio seal <dir> <versionId>", "studio fork <dir> <baseVersionId:version>", "studio layer <requirements|engineering|development|qa> <input:output>"].join("\n")); process.exitCode=2; }
 } catch(err){console.error(`[studio] ${err.message}`);process.exitCode=1;}
