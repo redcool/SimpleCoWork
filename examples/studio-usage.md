@@ -143,3 +143,16 @@ node bin/studio.js status examples/studio-small
 ```
 
 当前 CLI 可验证项目、版本、计划和任务；完整真实 LLM 执行入口仍在持续接入中。
+
+## 7. 独立层工作
+
+Studio 可以不创建完整 Version，直接运行独立层：
+
+```powershell
+node bin/studio.js layer requirements "一句话想法" ./out/requirements
+node bin/studio.js layer engineering ./out/requirements ./out/engineering
+node bin/studio.js layer development C:/work/existing-project ./out/development
+node bin/studio.js layer qa C:/work/existing-project ./out/qa
+```
+
+详细说明见：`examples/studio-layer-usage.md`。
