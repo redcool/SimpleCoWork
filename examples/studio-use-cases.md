@@ -253,3 +253,44 @@ bugs.importReport({
 ```powershell
 node examples/studio-standard/run-offline.js
 ```
+
+## 8. 第二阶段 Provider 运行模式
+
+Manager/Producer 控制循环现在可注入真实 Provider 或离线 Provider：
+
+```js
+new StudioControlLoop({
+  observer,
+  planner,
+  executor,
+  actor,
+  eventLog
+})
+```
+
+Provider 只负责生成 Proposal 或专业产出，不能直接改变 Studio 状态。
+
+```text
+Provider output
+→ ControlLoop proposal
+→ Fixed Kernel validation
+→ low-risk execution / user decision
+```
+
+离线模式使用 `mock` Provider；真实 Agnes 配置使用 `agnes` Provider。真实 Provider 运行需要配置：
+
+```powershell
+$env:AGNES_BASE_URL = "..."
+$env:AGNES_API_KEY = "..."
+$env:STUDIO_STRICT_CONFIG = "1"
+```
+
+第二阶段回归测试覆盖：
+
+- ControlLoop 多轮观察和执行；
+- 低风险动作与审批动作分离；
+- QA Bug 进入 Fix Task；
+- Regression Artifact 使 Bug 进入 verified/closed；
+- Actor capability 约束。
+
+大型 Studio Control Agent 仍不在第二阶段范围内。
