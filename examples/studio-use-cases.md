@@ -294,3 +294,36 @@ $env:STUDIO_STRICT_CONFIG = "1"
 - Actor capability 约束。
 
 大型 Studio Control Agent 仍不在第二阶段范围内。
+
+## 9. 第四阶段 Provider 示例
+
+三人 Studio：
+
+```powershell
+$env:STUDIO_PROVIDER = "mock"
+node examples/studio-small/run-provider.js
+```
+
+标准 Studio：
+
+```powershell
+$env:STUDIO_PROVIDER = "mock"
+node examples/studio-standard/run-provider.js
+```
+
+真实 Agnes：
+
+```powershell
+$env:STUDIO_PROVIDER = "agnes"
+$env:AGNES_BASE_URL = "..."
+$env:AGNES_API_KEY = "..."
+node examples/studio-standard/run-provider.js
+```
+
+第四阶段新增：
+
+- Provider 统一成功/失败结果；
+- timeout、network、rate-limit、认证、服务端错误分类；
+- `StudioManagerRuntime`；
+- SQLite 持久化 ConfirmationQueue；
+- 状态快照直接进入 Manager 观察上下文。
