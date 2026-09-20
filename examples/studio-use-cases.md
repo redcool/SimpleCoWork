@@ -327,3 +327,42 @@ node examples/studio-standard/run-provider.js
 - `StudioManagerRuntime`；
 - SQLite 持久化 ConfirmationQueue；
 - 状态快照直接进入 Manager 观察上下文。
+
+## 10. 三人/标准 Studio 真实运行验收
+
+第四阶段后，真实 Agnes 验收使用以下顺序：
+
+```text
+1. 先使用 mock 验证完整路径
+2. 配置 STUDIO_PROVIDER=agnes
+3. 使用最小 planning 请求
+4. 检查结构化 Proposal
+5. 检查 Provider requestId/usage/duration
+6. 模拟 timeout/rate-limit/network
+7. 验证有限退避重试
+8. 重启后检查 ConfirmationQueue
+9. 检查 RunReport
+10. 再运行标准 Studio 多角色请求
+```
+
+安全要求：
+
+- API Key 只从环境变量读取；
+- `publicStudioConfig()` 会脱敏 apiKey；
+- 不把 API Key 写入事件、Artifact 或运行报告；
+- 真实调用必须显式设置 `STUDIO_PROVIDER=agnes`；
+- 未设置 Agnes 配置时默认不发起真实请求。
+
+验收脚本：
+
+```powershell
+$env:STUDIO_PROVIDER = "mock"
+node examples/studio-small/run-provider.js
+node examples/studio-standard/run-provider.js
+
+$env:STUDIO_PROVIDER = "agnes"
+node examples/studio-small/run-provider.js
+node examples/studio-standard/run-provider.js
+```
+
+真实 Agnes 调用需要有效的 `AGNES_BASE_URL` 和 `AGNES_API_KEY`，本地测试不会伪造成功结果。
