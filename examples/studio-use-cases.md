@@ -170,3 +170,49 @@ Manager 发现独立 Process Supervisor
 ```
 
 大型 Studio 的 Control Agent 暂不提前实现到小型/标准模式，避免过早增加双重控制者和复杂度。
+
+## 6. Manager/Producer 控制循环
+
+三人和标准 Studio 不新增独立 Control Agent。Manager/Producer 使用统一协议：
+
+```text
+Observe → Plan → Propose → Kernel Validate → Act → Verify
+```
+
+Agent 输出结构化 proposal：
+
+```json
+{
+  "protocol": 1,
+  "summary": "planning 有可启动任务",
+  "observations": [],
+  "actions": [
+    {"type": "start_ready_task", "taskId": "..."},
+    {"type": "approve_stage", "requiresUserApproval": true}
+  ],
+  "blocked": [],
+  "requiresUserDecision": []
+}
+```
+
+固定内核区分：
+
+```text
+低风险动作：可以由内核校验后执行
+高风险动作：只能生成用户审批请求
+```
+
+离线示例：
+
+```powershell
+node examples/studio-small/run-control-offline.js
+```
+
+QA 报告可以转换为 Bug：
+
+```js
+bugs.importReport({
+  versionId,
+  report: { bugs: [{ title, severity, priority, targetStage }] }
+});
+```
