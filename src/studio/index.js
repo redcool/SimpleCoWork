@@ -19,3 +19,5 @@ export * from "./layers.js";
 export * from "./control.js";
 export * from "./identity.js";
 export * from "./control-loop.js";
+export * from "./snapshot.js";
+export * from "./confirmations.js";
