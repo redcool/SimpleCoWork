@@ -1,0 +1,10 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { openStudioDb,closeStudioDb,ConfirmationQueue,StudioManagerRuntime,StudioVersionStore,StudioTaskStore,StageGateStore } from "../src/studio/index.js";
+import { normalizeProviderCall } from "../src/providers/index.js";
+test("normalizes retryable Provider failure",async()=>{const r=await normalizeProviderCall(async()=>{const e=new Error("timeout");e.name="TimeoutError";throw e;},{provider:"agnes",model:"x"});assert.equal(r.ok,false);assert.equal(r.category,"timeout");assert.equal(r.retryable,true);});
+test("confirmation queue persists across reopen",()=>{const root=mkdtempSync(join(tmpdir(),"studio-phase4-confirm-"));const path=join(root,".cowork","project.db");let db=openStudioDb(path);const q=new ConfirmationQueue({db});const x=q.request({type:"approve_stage",requestedBy:"manager",reason:"ready"});assert.equal(q.list().length,1);q.decide(x.id,{approved:true,actorId:"user-1"});closeStudioDb(db);db=openStudioDb(path);const q2=new ConfirmationQueue({db});assert.equal(q2.list().length,0);closeStudioDb(db);});
+test("Manager runtime observes persistent stores",async()=>{const root=mkdtempSync(join(tmpdir(),"studio-phase4-runtime-"));const db=openStudioDb(join(root,".cowork","project.db"));const versions=new StudioVersionStore({db,projectRoot:root});const p=versions.createProject({name:"runtime"});const v=versions.createVersion({projectId:p.id,version:"0.4.0.0"});const tasks=new StudioTaskStore({db});const stages=new StageGateStore({db});const runtime=new StudioManagerRuntime({versions,stages,tasks,versionId:v.id,planner:async()=>({summary:"observe",actions:[]}),actor:{id:"manager"}});const r=await runtime.round();assert.equal(r.snapshot.version.id,v.id);closeStudioDb(db);});

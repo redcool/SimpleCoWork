@@ -2,6 +2,8 @@
 import { createMockProvider } from './mock.js';
 import { createOpenAIProvider } from './openai.js';
 
+export * from "./result.js";
+
 const FACTORIES = {
   mock: createMockProvider,
   openai: createOpenAIProvider,
