@@ -1,0 +1,228 @@
+{
+  "name": "studio-large",
+  "description": "大型 Studio CoWork：三个领域 PM 与独立 Control Agent",
+  "version": "0.1.8.0",
+  "roleModel": {
+    "capabilities": "composable",
+    "delegation": "domain PM owns domain process; Control Agent owns cross-domain monitoring and resource scheduling; fixed kernel remains execution authority"
+  },
+  "agents": [
+    {
+      "id": "control",
+      "role": "control",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "global-monitoring",
+        "cross-domain-scheduling",
+        "worker-health",
+        "lease-monitoring",
+        "provider-capacity",
+        "escalation-routing"
+      ],
+      "delegatesTo": [
+        "pm-planning",
+        "pm-technology",
+        "pm-art"
+      ],
+      "control": {
+        "mode": "supervised",
+        "allowedActions": [
+          "start_ready_task",
+          "retry_failed_task",
+          "request_review",
+          "export_events"
+        ],
+        "requiresUserApproval": [
+          "approve_stage",
+          "approve_version",
+          "seal_release"
+        ]
+      }
+    },
+    {
+      "id": "pm-planning",
+      "role": "producer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "planning-management",
+        "requirements-priority",
+        "narrative-coordination",
+        "planning-risk"
+      ],
+      "delegatesTo": [
+        "planner",
+        "narrative"
+      ]
+    },
+    {
+      "id": "pm-technology",
+      "role": "producer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "technology-management",
+        "architecture-priority",
+        "development-coordination",
+        "technical-risk"
+      ],
+      "delegatesTo": [
+        "technical-designer",
+        "developer",
+        "qa"
+      ]
+    },
+    {
+      "id": "pm-art",
+      "role": "producer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "art-management",
+        "asset-priority",
+        "visual-coordination",
+        "art-risk"
+      ],
+      "delegatesTo": [
+        "art-director",
+        "artist",
+        "audio"
+      ]
+    },
+    {
+      "id": "planner",
+      "role": "planner",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "requirements-decomposition",
+        "task-dag",
+        "acceptance"
+      ]
+    },
+    {
+      "id": "narrative",
+      "role": "narrative",
+      "provider": "agnes",
+      "model": "agnes-2.5-flash",
+      "capabilities": [
+        "narrative-design"
+      ]
+    },
+    {
+      "id": "technical-designer",
+      "role": "technical-designer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "architecture",
+        "interfaces",
+        "technical-spec"
+      ]
+    },
+    {
+      "id": "developer",
+      "role": "developer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "development",
+        "testing"
+      ]
+    },
+    {
+      "id": "qa",
+      "role": "qa",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "qa",
+        "regression",
+        "security",
+        "performance"
+      ]
+    },
+    {
+      "id": "art-director",
+      "role": "art-director",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "visual-direction",
+        "asset-governance"
+      ]
+    },
+    {
+      "id": "artist",
+      "role": "artist",
+      "provider": "agnes",
+      "model": "agnes-2.5-flash",
+      "capabilities": [
+        "art-production"
+      ]
+    },
+    {
+      "id": "audio",
+      "role": "audio",
+      "provider": "agnes",
+      "model": "agnes-2.5-flash",
+      "capabilities": [
+        "audio-production"
+      ]
+    },
+    {
+      "id": "reviewer",
+      "role": "reviewer",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "capabilities": [
+        "independent-review",
+        "acceptance-audit"
+      ]
+    }
+  ],
+  "stages": {
+    "planning": [
+      "control",
+      "pm-planning",
+      "planner"
+    ],
+    "design": [
+      "pm-planning",
+      "pm-technology",
+      "pm-art",
+      "reviewer"
+    ],
+    "assetSpec": [
+      "pm-art",
+      "art-director",
+      "audio",
+      "reviewer"
+    ],
+    "production": [
+      "pm-technology",
+      "pm-art",
+      "developer",
+      "artist",
+      "audio",
+      "reviewer"
+    ],
+    "playable": [
+      "control",
+      "pm-planning",
+      "pm-technology",
+      "pm-art",
+      "qa",
+      "reviewer"
+    ]
+  },
+  "providers": {
+    "agnes": {
+      "kind": "agnes",
+      "baseURL": "${AGNES_BASE_URL}",
+      "apiKey": "${AGNES_API_KEY}",
+      "defaultModel": "agnes-3.0-flash"
+    }
+  }
+}

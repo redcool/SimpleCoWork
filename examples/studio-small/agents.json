@@ -8,21 +8,42 @@
       "role": "manager",
       "provider": "agnes",
       "model": "agnes-3.0-flash",
-      "prompt": "你是制作经理。负责拆解版本目标、安排阶段任务、检查风险，不直接替代专业生产者。"
+      "prompt": "你是制作经理。负责拆解版本目标、安排阶段任务、检查风险，不直接替代专业生产者。",
+      "capabilities": [
+        "project-management",
+        "process-monitoring",
+        "task-dispatch",
+        "risk-management",
+        "user-escalation"
+      ],
+      "delegatesTo": [
+        "developer",
+        "artist"
+      ]
     },
     {
       "id": "developer",
       "role": "developer",
       "provider": "agnes",
       "model": "agnes-3.0-flash",
-      "prompt": "你是全栈技术 Agent。根据已批准设计生成实现方案、代码说明和测试计划。"
+      "prompt": "你是全栈技术 Agent。根据已批准设计生成实现方案、代码说明和测试计划。",
+      "capabilities": [
+        "technical-design",
+        "development",
+        "testing"
+      ]
     },
     {
       "id": "artist",
       "role": "artist",
       "provider": "agnes",
       "model": "agnes-2.5-flash",
-      "prompt": "你是综合艺术 Agent。根据已批准设计生成视觉方向、资源规格和可执行资产清单。"
+      "prompt": "你是综合艺术 Agent。根据已批准设计生成视觉方向、资源规格和可执行资产清单。",
+      "capabilities": [
+        "visual-direction",
+        "asset-specification",
+        "art-production"
+      ]
     }
   ],
   "stages": {
@@ -51,5 +72,9 @@
       "apiKey": "${AGNES_API_KEY}",
       "defaultModel": "agnes-3.0-flash"
     }
+  },
+  "roleModel": {
+    "capabilities": "composable",
+    "delegation": "agent may delegate a responsibility when a configured specialist owns it; fixed kernel validates every action"
   }
 }

@@ -12,77 +12,122 @@
       "role": "producer",
       "provider": "agnes",
       "model": "agnes-3.0-flash",
-      "prompt": "统筹需求、版本目标、预算、风险和用户审批。"
+      "prompt": "统筹需求、版本目标、预算、风险和用户审批。",
+      "capabilities": [
+        "project-management",
+        "process-monitoring",
+        "risk-management",
+        "user-escalation"
+      ]
     },
     {
       "id": "planner",
       "role": "planner",
       "provider": "agnes",
       "model": "agnes-3.0-flash",
-      "prompt": "把需求拆解为阶段计划、任务 DAG 和验收标准。"
+      "prompt": "把需求拆解为阶段计划、任务 DAG 和验收标准。",
+      "capabilities": [
+        "requirements-decomposition",
+        "stage-planning",
+        "task-dag"
+      ]
     },
     {
       "id": "lead-designer",
       "role": "designer",
       "provider": "agnes",
       "model": "agnes-2.5-flash",
-      "prompt": "负责系统设计、玩法规则、交互和文档一致性。"
+      "prompt": "负责系统设计、玩法规则、交互和文档一致性。",
+      "capabilities": [
+        "system-design",
+        "interaction-design"
+      ]
     },
     {
       "id": "narrative-designer",
       "role": "narrative",
       "provider": "agnes",
       "model": "agnes-2.5-flash",
-      "prompt": "负责世界观、叙事、角色、对白和剧情文档。"
+      "prompt": "负责世界观、叙事、角色、对白和剧情文档。",
+      "capabilities": [
+        "narrative-design"
+      ]
     },
     {
       "id": "art-director",
       "role": "art-director",
       "provider": "agnes",
       "model": "agnes-3.0-flash",
-      "prompt": "负责视觉风格、资产规格、审美规范和美术审核。"
+      "prompt": "负责视觉风格、资产规格、审美规范和美术审核。",
+      "capabilities": [
+        "visual-direction",
+        "asset-governance"
+      ]
     },
     {
       "id": "technical-designer",
       "role": "technical-designer",
       "provider": "agnes",
       "model": "agnes-3.0-flash",
-      "prompt": "负责系统落地、数据结构、技术约束和程序接口设计。"
+      "prompt": "负责系统落地、数据结构、技术约束和程序接口设计。",
+      "capabilities": [
+        "technical-design",
+        "architecture"
+      ]
     },
     {
       "id": "developer",
       "role": "developer",
       "provider": "agnes",
       "model": "agnes-3.0-flash",
-      "prompt": "根据批准的设计和技术规格生成代码、实现说明和测试。"
+      "prompt": "根据批准的设计和技术规格生成代码、实现说明和测试。",
+      "capabilities": [
+        "development",
+        "testing"
+      ]
     },
     {
       "id": "artist",
       "role": "artist",
       "provider": "agnes",
       "model": "agnes-2.5-flash",
-      "prompt": "根据批准的资产规格生产视觉资源和资源说明。"
+      "prompt": "根据批准的资产规格生产视觉资源和资源说明。",
+      "capabilities": [
+        "art-production"
+      ]
     },
     {
       "id": "audio-designer",
       "role": "audio",
       "provider": "agnes",
       "model": "agnes-2.5-flash",
-      "prompt": "负责音乐、音效、声音资产规格和音频验收。"
+      "prompt": "负责音乐、音效、声音资产规格和音频验收。",
+      "capabilities": [
+        "audio-production"
+      ]
     },
     {
       "id": "qa",
       "role": "qa",
       "provider": "agnes",
       "model": "agnes-3.0-flash",
-      "prompt": "负责测试计划、验收证据、回归测试和 Bug 报告。"
+      "prompt": "负责测试计划、验收证据、回归测试和 Bug 报告。",
+      "capabilities": [
+        "qa",
+        "regression",
+        "bug-analysis"
+      ]
     },
     {
       "id": "reviewer",
       "role": "reviewer",
       "provider": "agnes",
       "model": "agnes-3.0-flash",
-      "prompt": "独立审核 Artifact、依赖、验收标准和风险，不替生产者自审。"
+      "prompt": "独立审核 Artifact、依赖、验收标准和风险，不替生产者自审。",
+      "capabilities": [
+        "independent-review",
+        "acceptance-audit"
+      ]
     }
   ],
   "stages": {
@@ -120,5 +165,9 @@
       "apiKey": "${AGNES_API_KEY}",
       "defaultModel": "agnes-3.0-flash"
     }
+  },
+  "roleModel": {
+    "capabilities": "composable",
+    "delegation": "producer coordinates; specialists own their capabilities; manager-like monitoring is only assigned when configured"
   }
 }

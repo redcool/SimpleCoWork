@@ -156,3 +156,34 @@ node bin/studio.js layer qa C:/work/existing-project ./out/qa
 ```
 
 详细说明见：`examples/studio-layer-usage.md`。
+
+## 8. 三种 Studio 用例
+
+完整路线见：`examples/studio-use-cases.md`。
+
+```text
+三人 Studio
+  Manager + Developer + Artist
+
+标准 Studio
+  Producer + Planner + Designer + Technical + Developer + Artist + Audio + QA + Reviewer
+
+大型 Studio
+  Control Agent + PM-Planning + PM-Technology + PM-Art + 专业 Agent + Reviewer
+```
+
+当前状态：
+
+- 三人 Studio：可离线试用；
+- 标准 Studio：配置和核心内核可试用；
+- 大型 Studio：完成角色和能力配置，Control Agent 运行循环尚未实现。
+
+角色通过以下字段抽象：
+
+```json
+{
+  "role": "manager",
+  "capabilities": ["project-management", "process-monitoring"],
+  "delegatesTo": ["developer", "artist"]
+}
+```
