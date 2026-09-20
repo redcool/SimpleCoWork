@@ -216,3 +216,40 @@ bugs.importReport({
   report: { bugs: [{ title, severity, priority, targetStage }] }
 });
 ```
+
+## 7. 三人与标准 Studio 完成标准
+
+当前结论：两种工作室均达到本地 MVP/试用完成标准。
+
+三人 Studio：
+
+- 配置化 Manager、Developer、Artist；
+- Manager 控制 Proposal 协议；
+- 固定内核校验动作；
+- 五阶段离线执行基础；
+- 用户审批和 Reviewer；
+- QA 报告导入 Bug；
+- Bug 可创建 Fix Task 并进入回归关系；
+- Release、Outbox、Lease、Artifact 规则可用。
+
+标准 Studio：
+
+- 完整专业角色配置；
+- Producer/Planner/专业 Agent 分工；
+- 五阶段离线端到端示例；
+- 独立 QA 与 Reviewer；
+- 用户审批和版本封版；
+- 可组合 capabilities/delegatesTo。
+
+明确不宣称：
+
+- 生产环境就绪；
+- 真实多 Provider 长时间运行已验证；
+- 大型 Studio Control Agent 已实现；
+- 多项目全局调度已实现。
+
+标准离线示例：
+
+```powershell
+node examples/studio-standard/run-offline.js
+```
