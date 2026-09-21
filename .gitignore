@@ -3,3 +3,6 @@ node_modules/
 *.log
 .env
 
+/studio-acceptance-potato-2026-09-20
+/studio-acceptance-potato-2026-09-20-run2
+/tmp
