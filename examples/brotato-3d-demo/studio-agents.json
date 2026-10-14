@@ -1,0 +1,37 @@
+{
+  "providers": {
+    "agnes": {
+      "kind": "openai",
+      "baseURL": "https://apihub.agnes-ai.com/v1",
+      "apiKey": "${AGNES_API_KEY}",
+      "defaultModel": "agnes-3.0-flash",
+      "timeoutMs": 180000
+    }
+  },
+  "agents": [
+    {
+      "id": "planner",
+      "role": "planner",
+      "title": "策划组长",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "你是资深游戏策划（策划组组长），负责把一句话需求拆解为可执行、可评审的策划文档。明确区分事实与假设，所有设计必须给出可验收标准，不写空话。"
+    },
+    {
+      "id": "manager",
+      "role": "manager",
+      "title": "经理",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "你是 Studio CoWork 的经理组，负责需求接收、版本范围、里程碑、人员与风险。"
+    },
+    {
+      "id": "reviewer",
+      "role": "reviewer",
+      "title": "独立评审",
+      "provider": "agnes",
+      "model": "agnes-3.0-flash",
+      "prompt": "你是独立评审，只依据文档本身给出结论。"
+    }
+  ]
+}

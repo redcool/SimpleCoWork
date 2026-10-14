@@ -1,0 +1,15 @@
+{
+  "id": "7786a899-573a-4c47-88c8-614405d494fb",
+  "layer": "requirements",
+  "input": "做一个3d的土豆兄弟",
+  "output": "H:\\ai_works\\CoWorkPrj\\examples\\brotato-3d-demo\\requirements-output",
+  "provider": "openai",
+  "createdAt": "2026-10-10T08:27:25.057Z",
+  "files": [
+    "requirements.md",
+    "feature-list.md",
+    "asset-spec.md",
+    "acceptance.md"
+  ],
+  "logPath": "H:\\ai_works\\CoWorkPrj\\examples\\brotato-3d-demo\\layer-log.jsonl"
+}

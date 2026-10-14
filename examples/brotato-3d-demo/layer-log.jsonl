@@ -1,0 +1,6 @@
+{"ts":"2026-10-10T08:23:36.139Z","event":"layer.started","mode":"requirements","input":"做一个3d的土豆兄弟","provider":"openai"}
+{"ts":"2026-10-10T08:24:20.468Z","event":"document.written","file":"requirements.md"}
+{"ts":"2026-10-10T08:24:43.876Z","event":"document.written","file":"feature-list.md"}
+{"ts":"2026-10-10T08:26:52.745Z","event":"document.written","file":"asset-spec.md"}
+{"ts":"2026-10-10T08:27:25.056Z","event":"document.written","file":"acceptance.md"}
+{"ts":"2026-10-10T08:27:25.064Z","event":"layer.completed","files":4,"manifest":"H:\\ai_works\\CoWorkPrj\\examples\\brotato-3d-demo\\requirements-output\\layer-manifest.json"}

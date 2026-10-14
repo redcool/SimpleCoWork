@@ -1,0 +1,10 @@
+{"ts":"2026-10-10T10:41:06.972Z","event":"layer.started","mode":"requirements","input":"做一个3d的土豆兄弟","provider":"openai","languages":["zh","en"]}
+{"ts":"2026-10-10T10:42:07.465Z","event":"document.written","file":"requirements.zh.md","lang":"zh"}
+{"ts":"2026-10-10T10:42:35.630Z","event":"document.written","file":"requirements.en.md","lang":"en"}
+{"ts":"2026-10-10T10:43:21.979Z","event":"document.written","file":"feature-list.zh.md","lang":"zh"}
+{"ts":"2026-10-10T10:43:52.270Z","event":"document.written","file":"feature-list.en.md","lang":"en"}
+{"ts":"2026-10-10T10:44:38.776Z","event":"document.written","file":"asset-spec.zh.md","lang":"zh"}
+{"ts":"2026-10-10T10:45:20.077Z","event":"document.written","file":"asset-spec.en.md","lang":"en"}
+{"ts":"2026-10-10T10:46:02.262Z","event":"document.written","file":"acceptance.zh.md","lang":"zh"}
+{"ts":"2026-10-10T10:47:09.988Z","event":"document.written","file":"acceptance.en.md","lang":"en"}
+{"ts":"2026-10-10T10:47:09.989Z","event":"layer.completed","files":8,"languages":["zh","en"],"manifest":"H:\\ai_works\\CoWorkPrj\\examples\\brotato-3d-demo\\requirements-output-v2\\layer-manifest.json"}
