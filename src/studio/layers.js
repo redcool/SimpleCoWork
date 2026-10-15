@@ -18,7 +18,7 @@ export async function runStudioLayer({ mode, input, output, provider = null, sys
     throw new Error('languages 必须是非空语言代码数组（如 ["zh","en"]）');
   }
   const ctx = context(input, mode);
-  const out = resolve(output || join(process.cwd(), `.studio-${mode}-${Date.now()}`));
+  const out = resolve(output || join(process.cwd(), "tmp", `studio-${mode}-${Date.now()}`));
   mkdirSync(out, { recursive: true });
   const log = (event) => { if (logPath) appendFileSync(resolve(logPath), JSON.stringify({ ts: new Date().toISOString(), ...event }) + "\n"); };
   log({ event: "layer.started", mode, input: ctx.input, provider: provider?.name || "offline", languages });
