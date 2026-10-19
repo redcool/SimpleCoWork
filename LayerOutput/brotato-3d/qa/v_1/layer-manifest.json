@@ -1,0 +1,21 @@
+{
+  "id": "2807e4e3-6c63-4326-bb8b-5d2555bfd10a",
+  "layer": "qa",
+  "input": "H:\\ai_works\\CoWorkPrj\\LayerOutput\\brotato-3d\\development\\v_1",
+  "output": "H:\\ai_works\\CoWorkPrj\\LayerOutput\\brotato-3d\\qa\\v_1",
+  "provider": "openai",
+  "languages": [
+    "zh",
+    "en"
+  ],
+  "createdAt": "2026-10-15T11:02:33.635Z",
+  "files": [
+    "qa-report.zh.md",
+    "qa-report.en.md",
+    "bug-list.zh.md",
+    "bug-list.en.md",
+    "performance-security.zh.md",
+    "performance-security.en.md"
+  ],
+  "logPath": "H:\\ai_works\\CoWorkPrj\\tmp\\qa-layer-log.jsonl"
+}

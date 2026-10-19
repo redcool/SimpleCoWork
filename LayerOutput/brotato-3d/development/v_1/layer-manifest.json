@@ -1,0 +1,21 @@
+{
+  "id": "00ee4d7b-f6db-413b-94b8-1f56ea5a212c",
+  "layer": "development",
+  "input": "H:\\ai_works\\CoWorkPrj\\LayerOutput\\brotato-3d\\engineering\\v_1",
+  "output": "H:\\ai_works\\CoWorkPrj\\LayerOutput\\brotato-3d\\development\\v_1",
+  "provider": "openai",
+  "languages": [
+    "zh",
+    "en"
+  ],
+  "createdAt": "2026-10-15T10:56:30.566Z",
+  "files": [
+    "implementation-plan.zh.md",
+    "implementation-plan.en.md",
+    "change-list.zh.md",
+    "change-list.en.md",
+    "risk-register.zh.md",
+    "risk-register.en.md"
+  ],
+  "logPath": "H:\\ai_works\\CoWorkPrj\\tmp\\development-layer-log.jsonl"
+}

@@ -7,6 +7,7 @@
 - `studio-db-decision.md`：SQLite 与 NoSQL 数据库选型决策。
 - `studio-docs-index.md`：本索引。
 - `审核-2026-09-16.md`：v2 静态审核、问题依据、整改建议与优先级。
+- `Studio使用指南.md`：使用者视角的实际操作说明（层模式、工作流模式、运维与边界）。
 
 ## CoWork v1 冻结文档
 
